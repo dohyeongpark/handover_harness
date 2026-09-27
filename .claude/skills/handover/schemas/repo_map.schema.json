@@ -1,0 +1,192 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://handover.local/schemas/repo_map.schema.json",
+  "title": "Handover harness - repo map (.handover/repo_map.json)",
+  "description": "repo-mapper의 산출물. 스택 판별, 엔트리포인트, 모듈 의존, 외부 의존성 후보 목록.",
+  "type": "object",
+  "required": ["meta", "stacks", "entrypoints", "modules", "external_deps", "config_files"],
+  "properties": {
+    "meta": {
+      "type": "object",
+      "required": ["schema_version", "generated_by", "commit", "analyzed_at"],
+      "properties": {
+        "schema_version": { "$ref": "common.schema.json#/$defs/schemaVersion" },
+        "generated_by": { "type": "string", "minLength": 1 },
+        "commit": { "$ref": "common.schema.json#/$defs/commit" },
+        "analyzed_at": {
+          "description": "분석 시각 (ISO 8601)",
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "stacks": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/stack" }
+    },
+
+    "entrypoints": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/entrypoint" }
+    },
+
+    "modules": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/module" }
+    },
+
+    "external_deps": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/externalDep" }
+    },
+
+    "config_files": {
+      "description": "환경변수 파일, 빌드 설정, 배포 설정, CI 설정 위치",
+      "type": "array",
+      "items": { "$ref": "#/$defs/configFile" }
+    },
+
+    "unknowns": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/unknown" }
+    }
+  },
+  "additionalProperties": false,
+
+  "$defs": {
+    "commandEvidence": {
+      "description": "매니페스트나 문서에서 실제로 확인된 명령만. 추측 금지.",
+      "type": "object",
+      "required": ["command", "evidence"],
+      "properties": {
+        "command": { "type": "string", "minLength": 1 },
+        "evidence": { "$ref": "common.schema.json#/$defs/evidence" }
+      },
+      "additionalProperties": false
+    },
+
+    "stack": {
+      "type": "object",
+      "required": ["id", "root", "language", "manifest"],
+      "properties": {
+        "id": {
+          "description": "예: frontend, backend, batch",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "root": {
+          "description": "레포 루트 기준 상대 경로",
+          "type": "string",
+          "minLength": 1
+        },
+        "language": { "type": "string", "minLength": 1 },
+        "framework": { "type": "string" },
+        "package_manager": { "type": "string" },
+        "runtime_version": { "type": "string" },
+        "manifest": {
+          "description": "판별 근거가 된 파일",
+          "$ref": "common.schema.json#/$defs/evidence"
+        },
+        "build_commands": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/commandEvidence" }
+        },
+        "run_commands": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/commandEvidence" }
+        },
+        "test_commands": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/commandEvidence" }
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "entrypoint": {
+      "type": "object",
+      "required": ["kind", "stack_id", "description", "evidence"],
+      "properties": {
+        "kind": {
+          "enum": ["http_route_root", "screen_router", "cli", "scheduler", "event_consumer", "main"]
+        },
+        "stack_id": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "evidence": { "$ref": "common.schema.json#/$defs/evidence" }
+      },
+      "additionalProperties": false
+    },
+
+    "module": {
+      "type": "object",
+      "required": ["path", "stack_id", "role"],
+      "properties": {
+        "path": {
+          "description": "레포 루트 기준 상대 경로 (디렉터리 또는 파일)",
+          "type": "string",
+          "minLength": 1
+        },
+        "stack_id": { "type": "string", "minLength": 1 },
+        "role": {
+          "description": "한 줄 요약",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "depends_on": {
+          "description": "다른 module의 path",
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "externalDep": {
+      "type": "object",
+      "required": ["name", "kind", "provisional_requirement", "config_evidence"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "kind": {
+          "enum": ["http_api", "database", "cache", "queue", "storage", "auth", "other"]
+        },
+        "provisional_requirement": {
+          "description": "실제 기동 필수 여부는 env-builder가 확인한다. 여기서는 추정값.",
+          "enum": ["boot_required", "feature_required", "unknown"]
+        },
+        "config_evidence": {
+          "description": "어느 설정 파일/환경변수에서 발견했는지",
+          "$ref": "common.schema.json#/$defs/evidenceList"
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "configFile": {
+      "type": "object",
+      "required": ["path", "purpose"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "purpose": {
+          "enum": ["env", "build", "deploy", "ci", "other"]
+        },
+        "note": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+
+    "unknown": {
+      "type": "object",
+      "required": ["topic", "reason"],
+      "properties": {
+        "topic": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    }
+  }
+}
