@@ -24,6 +24,7 @@ LINE_RE = re.compile(r"^(\d+)(?:-(\d+))?$")
 INDEX_FILES = {"features.json", "tech_elements.json", "external_deps.json"}
 DETAIL_DIRS = {"traces", "tech", "ext"}
 DIR_PREFIX = {"traces": ("FEAT-", "FLOW-"), "tech": ("TECH-",), "ext": ("EXT-",)}
+REPO_MAP_FILE = "repo_map.json"
 
 
 # ---------------------------------------------------------------- schema loading
@@ -35,12 +36,13 @@ def load_validators(schema_dir: Path) -> dict[str, Draft202012Validator]:
     return {
         "index": Draft202012Validator(schemas["index.schema.json"], registry=registry),
         "detail": Draft202012Validator(schemas["detail.schema.json"], registry=registry),
+        "repo_map": Draft202012Validator(schemas["repo_map.schema.json"], registry=registry),
     }
 
 
 # ---------------------------------------------------------------- path helpers
 def locate(file_path: Path) -> tuple[Path, Path, str | None]:
-    """(repo_root, handover_dir, kind) 반환. kind: 'index' | 'detail' | None"""
+    """(repo_root, handover_dir, kind) 반환. kind: 'index' | 'detail' | 'repo_map' | None"""
     parts = file_path.parts
     if ".handover" not in parts:
         return file_path.parent, file_path.parent, None
@@ -50,6 +52,8 @@ def locate(file_path: Path) -> tuple[Path, Path, str | None]:
     rel = file_path.relative_to(handover)
     if file_path.suffix != ".json":
         return repo_root, handover, None
+    if len(rel.parts) == 1 and rel.name == REPO_MAP_FILE:
+        return repo_root, handover, "repo_map"
     if len(rel.parts) == 1 and rel.name in INDEX_FILES:
         return repo_root, handover, "index"
     if len(rel.parts) == 2 and rel.parts[0] in DETAIL_DIRS:
@@ -147,6 +151,33 @@ def semantic_detail(doc: dict, file_path: Path, errors: list[str]) -> None:
         errors.append(f"steps.order는 1부터 빠짐없이 이어져야 함 (현재 {orders})")
 
 
+def semantic_repo_map(doc: dict, errors: list[str]) -> None:
+    stack_ids = [s.get("id") for s in doc.get("stacks", [])]
+    dup_stacks = {x for x in stack_ids if stack_ids.count(x) > 1}
+    if dup_stacks:
+        errors.append(f"중복 stack id: {sorted(dup_stacks)}")
+    known_stacks = set(stack_ids)
+
+    for i, e in enumerate(doc.get("entrypoints", [])):
+        sid = e.get("stack_id")
+        if sid not in known_stacks:
+            errors.append(f"entrypoints[{i}]: 존재하지 않는 stack_id ({sid})")
+
+    module_paths = [m.get("path") for m in doc.get("modules", [])]
+    dup_modules = {x for x in module_paths if module_paths.count(x) > 1}
+    if dup_modules:
+        errors.append(f"중복 module path: {sorted(dup_modules)}")
+    known_modules = set(module_paths)
+
+    for i, m in enumerate(doc.get("modules", [])):
+        sid = m.get("stack_id")
+        if sid not in known_stacks:
+            errors.append(f"modules[{i}]: 존재하지 않는 stack_id ({sid})")
+        for dep in m.get("depends_on", []):
+            if dep not in known_modules:
+                errors.append(f"modules[{i}]: 존재하지 않는 depends_on 경로 ({dep})")
+
+
 # ---------------------------------------------------------------- main
 def validate_file(file_path: Path, validators) -> list[str]:
     repo_root, handover, kind = locate(file_path)
@@ -169,8 +200,10 @@ def validate_file(file_path: Path, validators) -> list[str]:
         check_evidence(ev, repo_root, where, errors, cache)
     if kind == "index":
         semantic_index(doc, handover, errors)
-    else:
+    elif kind == "detail":
         semantic_detail(doc, file_path, errors)
+    elif kind == "repo_map":
+        semantic_repo_map(doc, errors)
     return errors
 
 
