@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://handover.local/schemas/detail.schema.json",
+  "title": "Handover harness - detail file (traces/*.json, tech/*.json, ext/*.json)",
+  "type": "object",
+  "required": ["schema_version", "id", "type", "name", "generated_by", "commit", "overview", "claims"],
+  "properties": {
+    "schema_version": { "$ref": "common.schema.json#/$defs/schemaVersion" },
+    "id": { "$ref": "common.schema.json#/$defs/itemId" },
+    "type": { "$ref": "common.schema.json#/$defs/itemType" },
+    "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "generated_by": { "type": "string", "minLength": 1 },
+    "commit": { "$ref": "common.schema.json#/$defs/commit" },
+    "overview": { "type": "string", "minLength": 1, "maxLength": 600 },
+    "layers": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "common.schema.json#/$defs/layer" }
+    },
+
+    "steps": {
+      "description": "서비스 기능의 수직 흐름. 정답지의 flow 항목과 비교되는 부분.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["order", "layer", "description", "evidence"],
+        "properties": {
+          "order": { "type": "integer", "minimum": 1 },
+          "layer": { "$ref": "common.schema.json#/$defs/layer" },
+          "description": { "type": "string", "minLength": 1, "maxLength": 300 },
+          "evidence": { "$ref": "common.schema.json#/$defs/evidenceList" },
+          "claim_refs": {
+            "type": "array",
+            "items": { "$ref": "common.schema.json#/$defs/claimId" }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+
+    "usages": {
+      "description": "기술 요소의 수평 분석: 이 기술이 어느 기능에 어떻게 적용됐는가.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["how", "evidence"],
+        "properties": {
+          "feature": { "$ref": "common.schema.json#/$defs/itemId" },
+          "how": { "type": "string", "minLength": 1, "maxLength": 300 },
+          "evidence": { "$ref": "common.schema.json#/$defs/evidenceList" }
+        },
+        "additionalProperties": false
+      }
+    },
+
+    "dependency": {
+      "description": "외부 의존성 분류. env-builder 결과와 연결된다.",
+      "type": "object",
+      "required": ["requirement", "used_by", "local_substitute"],
+      "properties": {
+        "requirement": { "enum": ["boot_required", "feature_required", "unknown"] },
+        "used_by": {
+          "type": "array",
+          "items": { "$ref": "common.schema.json#/$defs/itemId" }
+        },
+        "local_substitute": { "enum": ["none", "docker", "mock", "existing_test_double"] },
+        "note": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+
+    "claims": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "common.schema.json#/$defs/claim" }
+    },
+
+    "open_questions": {
+      "description": "전임자 질문 목록의 원천.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["question", "reason"],
+        "properties": {
+          "question": { "type": "string", "minLength": 1 },
+          "reason": { "enum": ["low_confidence", "not_runnable", "unclear_intent", "missing_info", "doc_code_mismatch"] },
+          "related_claims": {
+            "type": "array",
+            "items": { "$ref": "common.schema.json#/$defs/claimId" }
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false,
+
+  "allOf": [
+    {
+      "if": { "properties": { "type": { "enum": ["service_feature", "flow"] } } },
+      "then": { "required": ["steps"] }
+    },
+    {
+      "if": { "properties": { "type": { "const": "tech_element" } } },
+      "then": { "required": ["usages"] }
+    },
+    {
+      "if": { "properties": { "type": { "const": "external_dependency" } } },
+      "then": { "required": ["dependency"] }
+    }
+  ]
+}

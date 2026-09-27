@@ -1,0 +1,33 @@
+{
+  "schema_version": "0.1",
+  "kind": "feature_index",
+  "generated_by": "feature-inventory",
+  "commit": "a1b2c3d",
+  "items": [
+    {
+      "id": "FEAT-order-create",
+      "type": "service_feature",
+      "name": "주문 생성",
+      "summary": "장바구니 상품으로 주문을 생성하고 재고를 차감한다.",
+      "layers": ["frontend", "backend", "db"],
+      "entrypoints": [
+        { "file": "frontend/src/pages/OrderPage.tsx", "lines": "30-52", "symbol": "handleSubmit" },
+        { "file": "backend/order/OrderController.java", "lines": "18-35", "symbol": "createOrder" }
+      ],
+      "detail_path": "traces/FEAT-order-create.json",
+      "status": "done"
+    },
+    {
+      "id": "FEAT-order-cancel",
+      "type": "service_feature",
+      "name": "주문 취소",
+      "summary": "결제 전 주문을 취소한다.",
+      "layers": ["frontend", "backend"],
+      "entrypoints": [
+        { "file": "backend/order/OrderController.java", "lines": "40-55", "symbol": "cancelOrder" }
+      ],
+      "detail_path": "traces/FEAT-order-cancel.json",
+      "status": "pending"
+    }
+  ]
+}

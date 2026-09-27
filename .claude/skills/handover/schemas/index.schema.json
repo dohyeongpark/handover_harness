@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://handover.local/schemas/index.schema.json",
+  "title": "Handover harness - index file (features.json, tech_elements.json)",
+  "description": "오케스트레이터가 작업 분배에 쓰는 가벼운 목록. 상세 내용은 넣지 않는다.",
+  "type": "object",
+  "required": ["schema_version", "kind", "generated_by", "commit", "items"],
+  "properties": {
+    "schema_version": { "$ref": "common.schema.json#/$defs/schemaVersion" },
+    "kind": { "enum": ["feature_index", "tech_index", "external_index"] },
+    "generated_by": { "type": "string", "minLength": 1 },
+    "commit": { "$ref": "common.schema.json#/$defs/commit" },
+    "items": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/indexItem" }
+    }
+  },
+  "additionalProperties": false,
+
+  "$defs": {
+    "indexItem": {
+      "type": "object",
+      "required": ["id", "type", "name", "summary", "entrypoints", "detail_path", "status"],
+      "properties": {
+        "id": { "$ref": "common.schema.json#/$defs/itemId" },
+        "type": { "$ref": "common.schema.json#/$defs/itemType" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "summary": {
+          "description": "한두 문장. 인덱스를 가볍게 유지하기 위해 길이를 제한한다.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "layers": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "common.schema.json#/$defs/layer" }
+        },
+        "entrypoints": {
+          "description": "기능이면 화면·라우트·엔드포인트, 기술 요소면 설정 파일·공통 모듈 위치",
+          "$ref": "common.schema.json#/$defs/evidenceList"
+        },
+        "detail_path": {
+          "description": ".handover/ 기준 상대 경로. 파일 이름은 <id>.json 이어야 한다.",
+          "type": "string",
+          "pattern": "^(traces|tech|ext)/[A-Za-z0-9._-]+\\.json$"
+        },
+        "status": { "enum": ["pending", "in_progress", "done", "failed"] },
+        "status_note": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

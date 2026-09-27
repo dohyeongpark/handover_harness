@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://handover.local/schemas/common.schema.json",
+  "title": "Handover harness - common definitions",
+  "$defs": {
+    "schemaVersion": { "const": "0.1" },
+
+    "itemType": {
+      "description": "정답지와 동일한 enum. 채점 시 항목 매칭의 기준이 된다.",
+      "enum": ["service_feature", "tech_element", "flow", "external_dependency"]
+    },
+
+    "itemId": {
+      "description": "코드에서 유도한 안정적 ID. 예: FEAT-order-create, TECH-jwt-auth, EXT-toss-payments, API-POST-orders",
+      "type": "string",
+      "pattern": "^(FEAT|TECH|FLOW|EXT|API)-[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+
+    "claimId": {
+      "description": "<소속 항목 ID>#<두 자리 이상 번호>. 병렬 에이전트끼리 번호 충돌을 피하기 위해 항목별로 번호를 매긴다.",
+      "type": "string",
+      "pattern": "^(FEAT|TECH|FLOW|EXT|API)-[A-Za-z0-9][A-Za-z0-9._-]*#[0-9]{2,}$"
+    },
+
+    "layer": { "enum": ["frontend", "backend", "db", "external", "infra"] },
+
+    "commit": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" },
+
+    "evidence": {
+      "description": "레포 루트 기준 상대 경로와 라인 범위. 파일 존재·라인 범위는 검증 훅이 추가로 확인한다.",
+      "type": "object",
+      "required": ["file", "lines"],
+      "properties": {
+        "file": { "type": "string", "minLength": 1 },
+        "lines": { "type": "string", "pattern": "^[0-9]+(-[0-9]+)?$" },
+        "symbol": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+
+    "evidenceList": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/evidence" }
+    },
+
+    "verification": {
+      "description": "runtime: 실제 실행으로 확인 / mock: 목 환경에서 확인 / static_only: 코드만 읽고 판단",
+      "enum": ["runtime", "mock", "static_only"]
+    },
+
+    "confidence": { "enum": ["high", "medium", "low"] },
+
+    "review": {
+      "description": "verifier 에이전트만 기록한다.",
+      "type": "object",
+      "required": ["verdict", "by"],
+      "properties": {
+        "verdict": { "enum": ["confirmed", "refuted", "partial"] },
+        "note": { "type": "string" },
+        "by": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+
+    "claim": {
+      "type": "object",
+      "required": ["id", "statement", "evidence", "verification", "confidence", "agent"],
+      "properties": {
+        "id": { "$ref": "#/$defs/claimId" },
+        "statement": { "type": "string", "minLength": 5, "maxLength": 400 },
+        "evidence": { "$ref": "#/$defs/evidenceList" },
+        "verification": { "$ref": "#/$defs/verification" },
+        "confidence": { "$ref": "#/$defs/confidence" },
+        "agent": { "type": "string", "minLength": 1 },
+        "related": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/itemId" }
+        },
+        "review": { "$ref": "#/$defs/review" }
+      },
+      "additionalProperties": false
+    }
+  }
+}
