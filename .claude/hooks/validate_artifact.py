@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+from datetime import datetime
 from pathlib import Path
 
 from jsonschema import Draft202012Validator
@@ -25,6 +26,8 @@ INDEX_FILES = {"features.json", "tech_elements.json", "external_deps.json"}
 DETAIL_DIRS = {"traces", "tech", "ext"}
 DIR_PREFIX = {"traces": ("FEAT-", "FLOW-"), "tech": ("TECH-",), "ext": ("EXT-",)}
 REPO_MAP_FILE = "repo_map.json"
+HISTORY_FILE = "history.json"
+SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
 # ---------------------------------------------------------------- schema loading
@@ -37,12 +40,13 @@ def load_validators(schema_dir: Path) -> dict[str, Draft202012Validator]:
         "index": Draft202012Validator(schemas["index.schema.json"], registry=registry),
         "detail": Draft202012Validator(schemas["detail.schema.json"], registry=registry),
         "repo_map": Draft202012Validator(schemas["repo_map.schema.json"], registry=registry),
+        "history": Draft202012Validator(schemas["history.schema.json"], registry=registry),
     }
 
 
 # ---------------------------------------------------------------- path helpers
 def locate(file_path: Path) -> tuple[Path, Path, str | None]:
-    """(repo_root, handover_dir, kind) 반환. kind: 'index' | 'detail' | 'repo_map' | None"""
+    """(repo_root, handover_dir, kind) 반환. kind: 'index' | 'detail' | 'repo_map' | 'history' | None"""
     parts = file_path.parts
     if ".handover" not in parts:
         return file_path.parent, file_path.parent, None
@@ -54,6 +58,8 @@ def locate(file_path: Path) -> tuple[Path, Path, str | None]:
         return repo_root, handover, None
     if len(rel.parts) == 1 and rel.name == REPO_MAP_FILE:
         return repo_root, handover, "repo_map"
+    if len(rel.parts) == 1 and rel.name == HISTORY_FILE:
+        return repo_root, handover, "history"
     if len(rel.parts) == 1 and rel.name in INDEX_FILES:
         return repo_root, handover, "index"
     if len(rel.parts) == 2 and rel.parts[0] in DETAIL_DIRS:
@@ -178,6 +184,35 @@ def semantic_repo_map(doc: dict, errors: list[str]) -> None:
                 errors.append(f"modules[{i}]: 존재하지 않는 depends_on 경로 ({dep})")
 
 
+def _parse_datetime(s: str):
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except (ValueError, AttributeError):
+        return None
+
+
+def semantic_history(doc: dict, errors: list[str]) -> None:
+    for i, c in enumerate(doc.get("notable_commits", [])):
+        sha = c.get("sha", "")
+        if not SHA_RE.match(sha):
+            errors.append(f"notable_commits[{i}]: sha는 40자 hex여야 함 ({sha})")
+
+    for key in ("hotspots", "ownership"):
+        paths = [item.get("path") for item in doc.get(key, [])]
+        dup = {x for x in paths if paths.count(x) > 1}
+        if dup:
+            errors.append(f"중복 {key} path: {sorted(dup)}")
+
+    activity = doc.get("repo_activity", {})
+    first = _parse_datetime(activity.get("first_commit_date", ""))
+    last = _parse_datetime(activity.get("last_commit_date", ""))
+    if first is not None and last is not None and first > last:
+        errors.append(
+            f"repo_activity: first_commit_date({activity['first_commit_date']})가 "
+            f"last_commit_date({activity['last_commit_date']})보다 나중임"
+        )
+
+
 # ---------------------------------------------------------------- main
 def validate_file(file_path: Path, validators) -> list[str]:
     repo_root, handover, kind = locate(file_path)
@@ -204,6 +239,8 @@ def validate_file(file_path: Path, validators) -> list[str]:
         semantic_detail(doc, file_path, errors)
     elif kind == "repo_map":
         semantic_repo_map(doc, errors)
+    elif kind == "history":
+        semantic_history(doc, errors)
     return errors
 
 
