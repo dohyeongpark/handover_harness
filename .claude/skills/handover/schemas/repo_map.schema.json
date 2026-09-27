@@ -180,13 +180,7 @@
     },
 
     "unknown": {
-      "type": "object",
-      "required": ["topic", "reason"],
-      "properties": {
-        "topic": { "type": "string", "minLength": 1 },
-        "reason": { "type": "string", "minLength": 1 }
-      },
-      "additionalProperties": false
+      "$ref": "common.schema.json#/$defs/unknown"
     }
   }
 }

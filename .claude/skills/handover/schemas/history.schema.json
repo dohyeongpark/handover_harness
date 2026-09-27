@@ -1,0 +1,188 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://handover.local/schemas/history.schema.json",
+  "title": "Handover harness - git history analysis (.handover/history.json)",
+  "description": "history-analyst의 산출물. 코드만 읽어서는 알 수 없는 것 — 핫스팟, 최근 활동, 이상 커밋, 소유권.",
+  "type": "object",
+  "required": ["meta", "repo_activity", "hotspots", "recent_focus", "notable_commits", "ownership"],
+  "properties": {
+    "meta": {
+      "type": "object",
+      "required": ["schema_version", "generated_by", "commit", "analyzed_at", "history_depth"],
+      "properties": {
+        "schema_version": { "$ref": "common.schema.json#/$defs/schemaVersion" },
+        "generated_by": { "type": "string", "minLength": 1 },
+        "commit": { "$ref": "common.schema.json#/$defs/commit" },
+        "analyzed_at": {
+          "description": "분석 시각 (ISO 8601)",
+          "type": "string",
+          "format": "date-time"
+        },
+        "history_depth": {
+          "description": "이 분석이 커버한 히스토리 범위",
+          "type": "object",
+          "required": ["type", "period", "commits_analyzed"],
+          "properties": {
+            "type": {
+              "description": "full: 얕은 클론이 아니고 첫 커밋까지 다 봤다 / shallow: 얕은 클론이라 히스토리가 잘렸다",
+              "enum": ["full", "shallow"]
+            },
+            "period": { "$ref": "#/$defs/dateRange" },
+            "commits_analyzed": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "repo_activity": {
+      "type": "object",
+      "required": ["first_commit_date", "last_commit_date", "total_commits", "contributor_count"],
+      "properties": {
+        "first_commit_date": { "type": "string", "format": "date-time" },
+        "last_commit_date": { "type": "string", "format": "date-time" },
+        "total_commits": { "type": "integer", "minimum": 0 },
+        "contributor_count": { "type": "integer", "minimum": 0 },
+        "active_period_note": {
+          "description": "활동이 끊긴 구간이 있으면 그 설명 (예: 장기 방치 후 재개)",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "hotspots": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/hotspot" }
+    },
+
+    "recent_focus": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/recentFocus" }
+    },
+
+    "notable_commits": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/notableCommit" }
+    },
+
+    "ownership": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/ownership" }
+    },
+
+    "unknowns": {
+      "type": "array",
+      "items": { "$ref": "common.schema.json#/$defs/unknown" }
+    }
+  },
+  "additionalProperties": false,
+
+  "$defs": {
+    "dateRange": {
+      "type": "object",
+      "required": ["since", "until"],
+      "properties": {
+        "since": { "type": "string", "format": "date-time" },
+        "until": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+
+    "authorCount": {
+      "type": "object",
+      "required": ["name", "commit_count"],
+      "properties": {
+        "name": {
+          "description": "이름까지만. 이메일 주소는 기록하지 않는다.",
+          "type": "string",
+          "minLength": 1
+        },
+        "commit_count": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+
+    "hotspot": {
+      "type": "object",
+      "required": ["path", "change_count", "last_changed", "primary_authors"],
+      "properties": {
+        "path": {
+          "description": "레포 루트 기준 상대 경로. repo_map.json이 있으면 modules[].path 단위, 없으면 파일 단위.",
+          "type": "string",
+          "minLength": 1
+        },
+        "change_count": {
+          "description": "이 경로를 건드린 커밋 수 (수정 빈도 기준. 라인 변경량이 아니다)",
+          "type": "integer",
+          "minimum": 1
+        },
+        "last_changed": { "type": "string", "format": "date-time" },
+        "primary_authors": {
+          "description": "이름만. 커밋 수 상세는 ownership에 있다.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "note": {
+          "description": "왜 자주 바뀌었는지 커밋 메시지에서 읽히는 경향이 있으면",
+          "type": "string"
+        },
+        "excluded_as_noise": {
+          "description": "lock 파일/빌드 산출물/마이그레이션 스냅샷 등이라 상위권에 걸렸지만 노이즈로 판단한 경우 true. 판단 근거는 note에.",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "recentFocus": {
+      "type": "object",
+      "required": ["path", "commit_count", "period"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "commit_count": { "type": "integer", "minimum": 1 },
+        "period": { "$ref": "#/$defs/dateRange" }
+      },
+      "additionalProperties": false
+    },
+
+    "notableCommit": {
+      "type": "object",
+      "required": ["sha", "date", "kind", "subject", "affected_paths"],
+      "properties": {
+        "sha": { "$ref": "common.schema.json#/$defs/commit" },
+        "date": { "type": "string", "format": "date-time" },
+        "kind": {
+          "enum": ["revert", "large_refactor", "mass_deletion", "merge_of_long_branch"]
+        },
+        "subject": {
+          "description": "커밋 제목. 이메일/개인 연락처가 포함되어 있으면 제외하고 옮겨적는다.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "affected_paths": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "ownership": {
+      "type": "object",
+      "required": ["path", "authors"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "authors": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/authorCount" }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

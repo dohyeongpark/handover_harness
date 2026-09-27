@@ -63,6 +63,17 @@
       "additionalProperties": false
     },
 
+    "unknown": {
+      "description": "판단하지 못한 것. 억지로 채우지 말고 여기 남긴다.",
+      "type": "object",
+      "required": ["topic", "reason"],
+      "properties": {
+        "topic": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+
     "claim": {
       "type": "object",
       "required": ["id", "statement", "evidence", "verification", "confidence", "agent"],
