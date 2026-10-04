@@ -1,0 +1,223 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://handover.local/schemas/env_report.schema.json",
+  "title": "Handover harness - environment report (.handover/env_report.json)",
+  "description": "env-builder의 산출물. 대상 프로젝트를 실제로 실행해 보고 어디까지 검증됐는지, 어디서 막혔는지 기록한다.",
+  "type": "object",
+  "required": ["meta", "components", "dependencies_resolved", "processes", "open_questions"],
+  "properties": {
+    "meta": {
+      "type": "object",
+      "required": ["schema_version", "generated_by", "commit", "analyzed_at", "budget"],
+      "properties": {
+        "schema_version": { "$ref": "common.schema.json#/$defs/schemaVersion" },
+        "generated_by": { "type": "string", "minLength": 1 },
+        "commit": { "$ref": "common.schema.json#/$defs/commit" },
+        "analyzed_at": {
+          "description": "분석 시각 (ISO 8601)",
+          "type": "string",
+          "format": "date-time"
+        },
+        "budget": { "$ref": "#/$defs/budget" }
+      },
+      "additionalProperties": false
+    },
+
+    "components": {
+      "description": "repo_map.json의 stacks[].id와 대응한다. 스택당 한 항목.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/component" }
+    },
+
+    "dependencies_resolved": {
+      "description": "repo_map.json의 external_deps 항목과 대응한다. provisional_requirement를 실제로 확인해 확정한 결과.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/dependencyResolved" }
+    },
+
+    "processes": {
+      "description": "이 실행에서 띄운 프로세스/컨테이너 전부",
+      "type": "array",
+      "items": { "$ref": "#/$defs/process" }
+    },
+
+    "open_questions": {
+      "description": "전임자에게 물어볼 질문 후보. 막힌 지점에서 변환한다.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/openQuestion" }
+    },
+
+    "unknowns": {
+      "type": "array",
+      "items": { "$ref": "common.schema.json#/$defs/unknown" }
+    }
+  },
+  "additionalProperties": false,
+
+  "$defs": {
+    "budget": {
+      "description": "시도 횟수는 설치/빌드/테스트/기동/헬스 체크 명령만 센다. 읽기 전용 탐색과 정리 명령은 세지 않는다.",
+      "type": "object",
+      "required": ["max_attempts", "attempts_used", "command_timeout_seconds"],
+      "properties": {
+        "max_attempts": {
+          "description": "전체 명령 시도 횟수 상한",
+          "type": "integer",
+          "minimum": 1
+        },
+        "attempts_used": {
+          "description": "실제로 사용한 시도 횟수",
+          "type": "integer",
+          "minimum": 0
+        },
+        "command_timeout_seconds": {
+          "description": "단일 명령 타임아웃",
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "phase": {
+      "enum": ["dependency_install", "build", "test", "start", "healthcheck"]
+    },
+
+    "profile": {
+      "description": "어느 프로필/환경 설정으로 확인했는지 (예: dev, test, local, default). 프로필 개념이 없는 스택이면 default. 여기 적힌 설정에서 확인된 것이지 운영 환경에서 확인된 것이 아니다.",
+      "type": "string",
+      "minLength": 1
+    },
+
+    "step": {
+      "type": "object",
+      "required": ["phase", "command", "outcome", "verification"],
+      "properties": {
+        "phase": { "$ref": "#/$defs/phase" },
+        "command": {
+          "description": "실제로 실행한 명령. skipped면 실행하려던 명령. 실제 크레덴셜 값은 넣지 않는다.",
+          "type": "string",
+          "minLength": 1
+        },
+        "outcome": { "enum": ["success", "failure", "skipped", "partial"] },
+        "verification": { "$ref": "common.schema.json#/$defs/verification" },
+        "note": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+
+    "blocker": {
+      "type": "object",
+      "required": ["phase", "symptom", "hypothesis"],
+      "properties": {
+        "phase": { "$ref": "#/$defs/phase" },
+        "symptom": {
+          "description": "관찰된 증상 (오류 메시지 요지, 종료 코드 등)",
+          "type": "string",
+          "minLength": 1
+        },
+        "hypothesis": {
+          "description": "원인 추정. 확인된 사실이 아니라 가설이다.",
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "component": {
+      "type": "object",
+      "required": ["stack_id", "profile", "steps", "final_state", "blockers"],
+      "properties": {
+        "stack_id": {
+          "description": "repo_map.json의 stacks[].id",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "profile": { "$ref": "#/$defs/profile" },
+        "steps": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/step" }
+        },
+        "final_state": {
+          "description": "running_verified: 기동 후 포트/헬스 체크까지 확인 / build_only: 빌드(또는 테스트)까지만 / failed: 시도했으나 빌드도 못 함 / not_attempted: 시도하지 않음",
+          "enum": ["running_verified", "build_only", "failed", "not_attempted"]
+        },
+        "blockers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/blocker" }
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "dependencyResolved": {
+      "type": "object",
+      "required": ["name", "profile", "actual_requirement", "resolution", "verification"],
+      "properties": {
+        "name": {
+          "description": "repo_map.json의 external_deps[].name. repo_map에 없던 의존성을 새로 발견했으면 새 이름.",
+          "type": "string",
+          "minLength": 1
+        },
+        "profile": { "$ref": "#/$defs/profile" },
+        "actual_requirement": {
+          "description": "이 profile에서의 실제 필요 여부. repo_map의 provisional_requirement를 확정한 값.",
+          "enum": ["boot_required", "feature_required", "not_required"]
+        },
+        "resolution": {
+          "description": "builtin: 프로젝트 내장(인메모리 DB 등) / existing_test_config: 이미 있는 테스트·로컬 설정 / docker: 컨테이너로 띄움 / mock: 목 서버 / sibling_component: 이번 실행에서 같은 레포의 다른 컴포넌트를 띄워 충족 / none: 해결 수단 없음 또는 불필요",
+          "enum": ["builtin", "existing_test_config", "docker", "mock", "sibling_component", "none"]
+        },
+        "verification": { "$ref": "common.schema.json#/$defs/verification" },
+        "note": {
+          "description": "repo_map의 추정과 다르면 그 차이를 여기 남긴다.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "process": {
+      "type": "object",
+      "required": ["name", "port", "started", "cleaned_up"],
+      "properties": {
+        "name": {
+          "description": "식별용 이름. handover- 접두사 필수.",
+          "type": "string",
+          "pattern": "^handover-[A-Za-z0-9][A-Za-z0-9._-]*$"
+        },
+        "port": {
+          "description": "리슨 포트. 포트를 열지 않는 프로세스면 null.",
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "started": { "type": "boolean" },
+        "cleaned_up": {
+          "description": "종료를 실제로 확인했을 때만 true. started가 false면 정리할 것이 없으므로 true.",
+          "type": "boolean"
+        },
+        "cleanup_note": {
+          "description": "정리하지 못했으면 그 이유와 수동 정리 방법. started: true, cleaned_up: false면 필수.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "openQuestion": {
+      "type": "object",
+      "required": ["question", "reason"],
+      "properties": {
+        "question": { "type": "string", "minLength": 1 },
+        "reason": {
+          "description": "왜 이 질문이 필요한지 (어느 단계에서 무엇 때문에 막혔는지)",
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
