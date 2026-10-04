@@ -27,6 +27,7 @@ DETAIL_DIRS = {"traces", "tech", "ext"}
 DIR_PREFIX = {"traces": ("FEAT-", "FLOW-"), "tech": ("TECH-",), "ext": ("EXT-",)}
 REPO_MAP_FILE = "repo_map.json"
 HISTORY_FILE = "history.json"
+ENV_REPORT_FILE = "env_report.json"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
@@ -41,12 +42,13 @@ def load_validators(schema_dir: Path) -> dict[str, Draft202012Validator]:
         "detail": Draft202012Validator(schemas["detail.schema.json"], registry=registry),
         "repo_map": Draft202012Validator(schemas["repo_map.schema.json"], registry=registry),
         "history": Draft202012Validator(schemas["history.schema.json"], registry=registry),
+        "env_report": Draft202012Validator(schemas["env_report.schema.json"], registry=registry),
     }
 
 
 # ---------------------------------------------------------------- path helpers
 def locate(file_path: Path) -> tuple[Path, Path, str | None]:
-    """(repo_root, handover_dir, kind) 반환. kind: 'index' | 'detail' | 'repo_map' | 'history' | None"""
+    """(repo_root, handover_dir, kind) 반환. kind: 'index' | 'detail' | 'repo_map' | 'history' | 'env_report' | None"""
     parts = file_path.parts
     if ".handover" not in parts:
         return file_path.parent, file_path.parent, None
@@ -60,6 +62,8 @@ def locate(file_path: Path) -> tuple[Path, Path, str | None]:
         return repo_root, handover, "repo_map"
     if len(rel.parts) == 1 and rel.name == HISTORY_FILE:
         return repo_root, handover, "history"
+    if len(rel.parts) == 1 and rel.name == ENV_REPORT_FILE:
+        return repo_root, handover, "env_report"
     if len(rel.parts) == 1 and rel.name in INDEX_FILES:
         return repo_root, handover, "index"
     if len(rel.parts) == 2 and rel.parts[0] in DETAIL_DIRS:
@@ -213,6 +217,43 @@ def semantic_history(doc: dict, errors: list[str]) -> None:
         )
 
 
+def semantic_env_report(doc: dict, errors: list[str]) -> None:
+    stack_ids = [c.get("stack_id") for c in doc.get("components", [])]
+    dup_stacks = {x for x in stack_ids if stack_ids.count(x) > 1}
+    if dup_stacks:
+        errors.append(f"중복 components stack_id: {sorted(dup_stacks)}")
+
+    for i, c in enumerate(doc.get("components", [])):
+        if c.get("final_state") != "running_verified":
+            continue
+        started = any(
+            s.get("phase") == "start" and s.get("outcome") == "success" for s in c.get("steps", [])
+        )
+        if not started:
+            errors.append(
+                f"components[{i}]: final_state가 running_verified인데 steps에 "
+                f"start phase의 success가 없음 ({c.get('stack_id')})"
+            )
+
+    dep_keys = [(d.get("name"), d.get("profile")) for d in doc.get("dependencies_resolved", [])]
+    dup_deps = {x for x in dep_keys if dep_keys.count(x) > 1}
+    if dup_deps:
+        errors.append(f"중복 dependencies_resolved (name, profile): {sorted(dup_deps)}")
+
+    for i, p in enumerate(doc.get("processes", [])):
+        if p.get("started") and not p.get("cleaned_up") and not (p.get("cleanup_note") or "").strip():
+            errors.append(
+                f"processes[{i}]: started인데 cleaned_up이 false임 ({p.get('name')}). "
+                "프로세스를 종료하고 cleaned_up을 true로 바꾸거나, 정말 정리하지 못했다면 "
+                "그 이유와 수동 정리 방법을 cleanup_note에 남겨야 함"
+            )
+
+    budget = doc.get("meta", {}).get("budget", {})
+    used, limit = budget.get("attempts_used"), budget.get("max_attempts")
+    if isinstance(used, int) and isinstance(limit, int) and used > limit:
+        errors.append(f"meta.budget: attempts_used({used})가 max_attempts({limit})를 넘음")
+
+
 # ---------------------------------------------------------------- main
 def validate_file(file_path: Path, validators) -> list[str]:
     repo_root, handover, kind = locate(file_path)
@@ -241,6 +282,8 @@ def validate_file(file_path: Path, validators) -> list[str]:
         semantic_repo_map(doc, errors)
     elif kind == "history":
         semantic_history(doc, errors)
+    elif kind == "env_report":
+        semantic_env_report(doc, errors)
     return errors
 
 
