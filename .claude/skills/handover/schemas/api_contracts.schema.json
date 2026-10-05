@@ -1,0 +1,312 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://handover.local/schemas/api_contracts.schema.json",
+  "title": "Handover harness - API contracts (.handover/api_contracts.json)",
+  "description": "api-contract-mapper의 산출물. 호출하는 쪽(caller)의 HTTP 호출부와 호출받는 쪽(callee)의 라우트 정의를 짝지은 계약 목록. caller/callee는 stack_id로 표현하므로 프론트→백뿐 아니라 다른 방향(백→다른 서비스)도 같은 구조로 담는다.",
+  "type": "object",
+  "required": ["meta", "clients", "contracts", "summary"],
+  "properties": {
+    "meta": {
+      "type": "object",
+      "required": ["schema_version", "generated_by", "commit", "analyzed_at", "scope"],
+      "properties": {
+        "schema_version": { "$ref": "common.schema.json#/$defs/schemaVersion" },
+        "generated_by": { "type": "string", "minLength": 1 },
+        "commit": { "$ref": "common.schema.json#/$defs/commit" },
+        "analyzed_at": {
+          "description": "분석 시각 (ISO 8601)",
+          "type": "string",
+          "format": "date-time"
+        },
+        "scope": {
+          "description": "이번 실행에서 분석한 방향. 여기 없는 방향은 분석하지 않은 것이지 호출이 없는 것이 아니다.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/direction" }
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "clients": {
+      "description": "caller 쪽 HTTP 클라이언트 인스턴스 목록 (baseURL 테이블). 인스턴스 없이 전역 함수로 직접 호출하는 경우도 암묵적 클라이언트 한 항목으로 등록한다.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/client" }
+    },
+
+    "contracts": {
+      "description": "엔드포인트(method + path_normalized)당 한 항목. 같은 엔드포인트를 부르는 호출부가 여럿이면 caller.evidence에 모두 담는다.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/contract" }
+    },
+
+    "summary": {
+      "description": "contracts의 집계. 검증 훅이 실제 개수와 대조한다.",
+      "type": "object",
+      "required": ["total", "by_match_status"],
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "by_match_status": {
+          "type": "object",
+          "required": ["matched", "caller_only", "callee_only", "ambiguous"],
+          "properties": {
+            "matched": { "type": "integer", "minimum": 0 },
+            "caller_only": { "type": "integer", "minimum": 0 },
+            "callee_only": { "type": "integer", "minimum": 0 },
+            "ambiguous": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "unknowns": {
+      "type": "array",
+      "items": { "$ref": "common.schema.json#/$defs/unknown" }
+    }
+  },
+  "additionalProperties": false,
+
+  "$defs": {
+    "stackId": {
+      "description": "repo_map.json의 stacks[].id",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+
+    "clientId": {
+      "description": "clients[].id. 이 파일 안에서만 유일하면 된다.",
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9._-]*$"
+    },
+
+    "direction": {
+      "type": "object",
+      "required": ["caller_stack_id", "callee_stack_id"],
+      "properties": {
+        "caller_stack_id": { "$ref": "#/$defs/stackId" },
+        "callee_stack_id": { "$ref": "#/$defs/stackId" }
+      },
+      "additionalProperties": false
+    },
+
+    "method": {
+      "description": "ANY는 메서드 제한이 없는 라우트 정의에만 쓴다.",
+      "enum": ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "ANY"]
+    },
+
+    "modifier": {
+      "description": "호출부에 적힌 경로나 헤더를 실제 요청에서 바꾸는 것 (인터셉터, 공통 래퍼, 개발 프록시의 경로 재작성 등)",
+      "type": "object",
+      "required": ["kind", "effect", "evidence"],
+      "properties": {
+        "kind": { "enum": ["interceptor", "wrapper", "proxy", "other"] },
+        "effect": {
+          "description": "무엇을 어떻게 바꾸는지. 경로를 바꾸는지 헤더만 바꾸는지 구분해 적는다.",
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence": { "$ref": "common.schema.json#/$defs/evidence" }
+      },
+      "additionalProperties": false
+    },
+
+    "client": {
+      "type": "object",
+      "required": ["id", "stack_id", "name", "base_url_literal", "base_url_resolved", "evidence"],
+      "properties": {
+        "id": { "$ref": "#/$defs/clientId" },
+        "stack_id": { "$ref": "#/$defs/stackId" },
+        "name": {
+          "description": "코드에서의 인스턴스 이름(변수/export 이름). 암묵적 클라이언트면 호출 함수 이름.",
+          "type": "string",
+          "minLength": 1
+        },
+        "base_url_literal": {
+          "description": "정의부에 적힌 baseURL 표현 그대로 (문자열 리터럴이든 환경변수 참조·상수 조합이든 소스에 적힌 대로). baseURL을 설정하지 않았으면 null.",
+          "type": ["string", "null"]
+        },
+        "base_url_resolved": {
+          "description": "코드와 설정 파일만으로 확정한 값. baseURL이 없어 접두 경로가 없으면 빈 문자열. 환경변수 등으로 정해져 값을 확정할 수 없으면 null — 추정값을 넣지 않는다.",
+          "type": ["string", "null"]
+        },
+        "base_url_note": {
+          "description": "resolved를 어떻게 확정했는지, 또는 왜 확정하지 못했는지 (어느 환경변수/상수에 달려 있는지). base_url_resolved가 null이면 필수.",
+          "type": "string"
+        },
+        "evidence": {
+          "description": "인스턴스 정의부",
+          "$ref": "common.schema.json#/$defs/evidence"
+        },
+        "modifiers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/modifier" }
+        }
+      },
+      "additionalProperties": false,
+      "if": {
+        "required": ["base_url_resolved"],
+        "properties": { "base_url_resolved": { "type": "null" } }
+      },
+      "then": {
+        "required": ["base_url_note"],
+        "properties": { "base_url_note": { "minLength": 1 } }
+      }
+    },
+
+    "caller": {
+      "type": "object",
+      "required": ["stack_id", "client_id", "evidence"],
+      "properties": {
+        "stack_id": { "$ref": "#/$defs/stackId" },
+        "client_id": {
+          "description": "clients[].id. 검증 훅이 존재 여부를 확인한다.",
+          "$ref": "#/$defs/clientId"
+        },
+        "evidence": {
+          "description": "이 엔드포인트를 부르는 호출부 전부",
+          "$ref": "common.schema.json#/$defs/evidenceList"
+        },
+        "note": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+
+    "callee": {
+      "type": "object",
+      "required": ["stack_id", "handler_symbol", "evidence"],
+      "properties": {
+        "stack_id": { "$ref": "#/$defs/stackId" },
+        "handler_symbol": {
+          "description": "라우트를 처리하는 심볼 (예: 클래스명.메서드명, 함수명)",
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence": {
+          "description": "라우트 정의부 (핸들러에 메서드/경로를 묶는 줄)",
+          "$ref": "common.schema.json#/$defs/evidence"
+        },
+        "note": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+
+    "candidate": {
+      "description": "ambiguous일 때 확정하지 못한 쪽의 후보 하나",
+      "type": "object",
+      "required": ["side", "stack_id", "path_raw", "evidence"],
+      "properties": {
+        "side": { "enum": ["caller", "callee"] },
+        "stack_id": { "$ref": "#/$defs/stackId" },
+        "path_raw": { "type": "string", "minLength": 1 },
+        "symbol": {
+          "description": "callee 후보면 핸들러 심볼, caller 후보면 호출 함수 이름",
+          "type": "string"
+        },
+        "evidence": { "$ref": "common.schema.json#/$defs/evidence" },
+        "note": {
+          "description": "왜 후보인지, 왜 확정하지 못했는지",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "pathParam": {
+      "description": "path_normalized의 {} 하나에 대응. 등장 순서대로 나열한다.",
+      "type": "object",
+      "required": ["name_caller", "name_callee"],
+      "properties": {
+        "name_caller": {
+          "description": "caller 쪽 표현 (템플릿에 끼워 넣은 식). caller가 없으면 null.",
+          "type": ["string", "null"]
+        },
+        "name_callee": {
+          "description": "callee 쪽 플레이스홀더 이름. callee가 없으면 null.",
+          "type": ["string", "null"]
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "queryParam": {
+      "type": "object",
+      "required": ["name", "side"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "side": {
+          "description": "어느 쪽 코드에서 발견했는지",
+          "enum": ["caller", "callee", "both"]
+        },
+        "note": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+
+    "contract": {
+      "type": "object",
+      "required": [
+        "id", "method", "path_normalized", "path_raw_caller", "path_raw_callee",
+        "caller", "callee", "match_status", "match_basis", "confidence",
+        "query_params", "path_params"
+      ],
+      "properties": {
+        "id": {
+          "description": "API-<METHOD>-<path_normalized의 세그먼트를 '-'로 이은 것, {}는 '_'>. 예: POST /api/users/{}/orders → API-POST-api-users-_-orders",
+          "$ref": "common.schema.json#/$defs/itemId",
+          "pattern": "^API-"
+        },
+        "method": { "$ref": "#/$defs/method" },
+        "path_normalized": {
+          "description": "비교용 정규화 경로. 오리진·쿼리 스트링 제거, baseURL 합성 완료, 경로 파라미터는 이름 없이 {}, 끝 슬래시 제거. baseURL을 확정하지 못한 caller_only면 확정된 부분만 적고 caller.note에 남긴다.",
+          "type": "string",
+          "pattern": "^/[^?#$]*$"
+        },
+        "path_raw_caller": {
+          "description": "호출부에 적힌 경로 표현 그대로 (baseURL 합성 전). 호출부가 여럿이면 caller.evidence 첫 항목의 것. caller가 없으면 null.",
+          "type": ["string", "null"]
+        },
+        "path_raw_callee": {
+          "description": "라우트 정의에 적힌 전체 경로 (상위 접두 경로 포함, 플레이스홀더 표기는 원문 그대로). callee가 없으면 null.",
+          "type": ["string", "null"]
+        },
+        "caller": {
+          "description": "callee_only면 null",
+          "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/caller" }]
+        },
+        "callee": {
+          "description": "caller_only면 null",
+          "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/callee" }]
+        },
+        "match_status": {
+          "description": "matched: 양쪽이 짝지어짐 / caller_only: 부르는 쪽만 있음 / callee_only: 라우트만 있고 부르는 곳을 못 찾음 / ambiguous: 후보가 여럿이라 확정하지 못함",
+          "enum": ["matched", "caller_only", "callee_only", "ambiguous"]
+        },
+        "match_basis": {
+          "description": "exact: 합성한 경로가 문자 그대로 일치 / normalized: 경로 파라미터 표기만 달랐음 / inferred: baseURL 미확정·동적 경로 조합 등 추론이 필요했음. 짝을 짓지 않은 caller_only·callee_only는 null.",
+          "enum": ["exact", "normalized", "inferred", null]
+        },
+        "confidence": {
+          "description": "match_status 판단에 대한 확신",
+          "$ref": "common.schema.json#/$defs/confidence"
+        },
+        "candidates": {
+          "description": "ambiguous일 때만. 확정하지 못한 쪽(caller/callee 중 null인 쪽)의 후보를 2개 이상.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/candidate" }
+        },
+        "query_params": {
+          "description": "경로 매칭에서 제외한 쿼리 파라미터",
+          "type": "array",
+          "items": { "$ref": "#/$defs/queryParam" }
+        },
+        "path_params": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/pathParam" }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
