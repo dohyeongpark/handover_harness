@@ -28,6 +28,8 @@ DIR_PREFIX = {"traces": ("FEAT-", "FLOW-"), "tech": ("TECH-",), "ext": ("EXT-",)
 REPO_MAP_FILE = "repo_map.json"
 HISTORY_FILE = "history.json"
 ENV_REPORT_FILE = "env_report.json"
+API_CONTRACTS_FILE = "api_contracts.json"
+MATCH_STATUSES = ("matched", "caller_only", "callee_only", "ambiguous")
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
@@ -43,12 +45,13 @@ def load_validators(schema_dir: Path) -> dict[str, Draft202012Validator]:
         "repo_map": Draft202012Validator(schemas["repo_map.schema.json"], registry=registry),
         "history": Draft202012Validator(schemas["history.schema.json"], registry=registry),
         "env_report": Draft202012Validator(schemas["env_report.schema.json"], registry=registry),
+        "api_contracts": Draft202012Validator(schemas["api_contracts.schema.json"], registry=registry),
     }
 
 
 # ---------------------------------------------------------------- path helpers
 def locate(file_path: Path) -> tuple[Path, Path, str | None]:
-    """(repo_root, handover_dir, kind) 반환. kind: 'index' | 'detail' | 'repo_map' | 'history' | 'env_report' | None"""
+    """(repo_root, handover_dir, kind) 반환. kind: 'index' | 'detail' | 'repo_map' | 'history' | 'env_report' | 'api_contracts' | None"""
     parts = file_path.parts
     if ".handover" not in parts:
         return file_path.parent, file_path.parent, None
@@ -64,6 +67,8 @@ def locate(file_path: Path) -> tuple[Path, Path, str | None]:
         return repo_root, handover, "history"
     if len(rel.parts) == 1 and rel.name == ENV_REPORT_FILE:
         return repo_root, handover, "env_report"
+    if len(rel.parts) == 1 and rel.name == API_CONTRACTS_FILE:
+        return repo_root, handover, "api_contracts"
     if len(rel.parts) == 1 and rel.name in INDEX_FILES:
         return repo_root, handover, "index"
     if len(rel.parts) == 2 and rel.parts[0] in DETAIL_DIRS:
@@ -254,6 +259,82 @@ def semantic_env_report(doc: dict, errors: list[str]) -> None:
         errors.append(f"meta.budget: attempts_used({used})가 max_attempts({limit})를 넘음")
 
 
+def semantic_api_contracts(doc: dict, errors: list[str]) -> None:
+    client_ids = [c.get("id") for c in doc.get("clients", [])]
+    dup_clients = {x for x in client_ids if client_ids.count(x) > 1}
+    if dup_clients:
+        errors.append(f"중복 client id: {sorted(dup_clients)}")
+    known_clients = set(client_ids)
+
+    contracts = doc.get("contracts", [])
+    ids = [c.get("id") for c in contracts]
+    dup_ids = {x for x in ids if ids.count(x) > 1}
+    if dup_ids:
+        errors.append(f"중복 contract id: {sorted(dup_ids)}")
+
+    for i, c in enumerate(contracts):
+        where = f"contracts[{i}]({c.get('id')})"
+        caller, callee = c.get("caller"), c.get("callee")
+        status = c.get("match_status")
+        candidates = c.get("candidates") or []
+
+        if caller is not None and caller.get("client_id") not in known_clients:
+            errors.append(f"{where}: caller.client_id가 clients에 없음 ({caller.get('client_id')})")
+
+        if status == "matched":
+            if caller is None or callee is None:
+                errors.append(f"{where}: match_status가 matched인데 caller 또는 callee가 null임")
+            if c.get("match_basis") is None:
+                errors.append(f"{where}: match_status가 matched면 match_basis가 있어야 함")
+        elif status == "caller_only":
+            if caller is None:
+                errors.append(f"{where}: match_status가 caller_only인데 caller가 null임")
+            if callee is not None:
+                errors.append(
+                    f"{where}: match_status가 caller_only인데 callee가 null이 아님. "
+                    "짝을 찾았으면 matched로, 확신이 없으면 ambiguous로 두고 candidates에 기록"
+                )
+        elif status == "callee_only":
+            if callee is None:
+                errors.append(f"{where}: match_status가 callee_only인데 callee가 null임")
+            if caller is not None:
+                errors.append(
+                    f"{where}: match_status가 callee_only인데 caller가 null이 아님. "
+                    "짝을 찾았으면 matched로, 확신이 없으면 ambiguous로 두고 candidates에 기록"
+                )
+        elif status == "ambiguous":
+            if (caller is None) == (callee is None):
+                errors.append(
+                    f"{where}: ambiguous면 확정된 쪽만 채우고 확정하지 못한 쪽은 null이어야 함 "
+                    "(caller/callee 중 정확히 하나만 null)"
+                )
+            else:
+                open_side = "caller" if caller is None else "callee"
+                if len(candidates) < 2:
+                    errors.append(f"{where}: ambiguous면 candidates에 후보를 2개 이상 기록해야 함")
+                wrong = [k for k, cand in enumerate(candidates) if cand.get("side") != open_side]
+                if wrong:
+                    errors.append(
+                        f"{where}: candidates{wrong}의 side가 확정하지 못한 쪽({open_side})과 다름"
+                    )
+
+        if status in ("caller_only", "callee_only") and c.get("match_basis") is not None:
+            errors.append(f"{where}: 짝을 짓지 않은 {status}는 match_basis가 null이어야 함")
+        if status != "ambiguous" and candidates:
+            errors.append(f"{where}: candidates는 match_status가 ambiguous일 때만 쓴다")
+
+    summary = doc.get("summary", {})
+    if summary.get("total") != len(contracts):
+        errors.append(f"summary.total({summary.get('total')})이 contracts 개수({len(contracts)})와 다름")
+    by_status = summary.get("by_match_status", {})
+    for status in MATCH_STATUSES:
+        actual = sum(1 for c in contracts if c.get("match_status") == status)
+        if by_status.get(status) != actual:
+            errors.append(
+                f"summary.by_match_status.{status}({by_status.get(status)})가 실제 개수({actual})와 다름"
+            )
+
+
 # ---------------------------------------------------------------- main
 def validate_file(file_path: Path, validators) -> list[str]:
     repo_root, handover, kind = locate(file_path)
@@ -284,6 +365,8 @@ def validate_file(file_path: Path, validators) -> list[str]:
         semantic_history(doc, errors)
     elif kind == "env_report":
         semantic_env_report(doc, errors)
+    elif kind == "api_contracts":
+        semantic_api_contracts(doc, errors)
     return errors
 
 
