@@ -69,3 +69,86 @@
   run_commands 후보다 — 특히 `-Dspring.profiles.active=` 같은 프로파일
   지정이 여기서만 드러나는 경우가 있으므로 `application.properties`의
   `spring.profiles.active`와 다르면 둘 다 남긴다.
+
+## API 계약 단서
+
+### caller: 클라이언트 인스턴스와 baseURL
+
+이 스택이 caller가 되는 것은 다른 서비스를 호출할 때다 (`RestClient`,
+`WebClient`, `RestTemplate`의 빈 정의, `@FeignClient`, `@HttpExchange`
+인터페이스). baseURL은 빌더의 `.baseUrl(...)`이나 어노테이션의 `url`
+속성에 있고, 대개 `${...}` 프로퍼티 치환이다. 현재 api-contract-mapper의
+범위(프론트→백)에서는 수집하지 않는다.
+
+### caller: 호출부
+
+위와 같은 이유로 현재 범위에서는 해당 없음.
+
+### callee: 라우트 정의
+
+- 컨트롤러 클래스: `@RestController` 또는 `@Controller`가 붙은 클래스.
+  라우트의 전체 경로는 **세 단계를 이어 붙인 것**이다:
+  1. 전역 접두 경로 — `application.properties`/`.yml`의
+     `server.servlet.context-path`, `spring.mvc.servlet.path`
+     (WebFlux면 `spring.webflux.base-path`). 프로파일별 파일에서 값이
+     다를 수 있다. `WebMvcConfigurer`의 `configurePathMatch`에서
+     `addPathPrefix(...)`로 특정 컨트롤러 묶음에만 접두 경로를 붙이는
+     경우도 있다. 없으면 접두 경로 없음.
+  2. 클래스 레벨 `@RequestMapping("/...")` — 없을 수 있다.
+  3. 메서드 레벨 `@GetMapping`, `@PostMapping`, `@PutMapping`,
+     `@PatchMapping`, `@DeleteMapping`, `@RequestMapping`.
+- 메서드 레벨 어노테이션에 경로가 없으면(`@PostMapping` 단독) 클래스 레벨
+  경로가 곧 그 라우트의 경로다. 놓치기 쉽다.
+- 경로는 `value` 또는 `path` 속성, 혹은 속성 이름 없이 첫 인자로 적힌다.
+  배열(`{"/a", "/b"}`)이면 경로마다 라우트가 하나씩이다.
+- HTTP 메서드: `@GetMapping` 등은 이름이 곧 메서드. `@RequestMapping`은
+  `method = RequestMethod.X` 속성을 보고, 속성이 없으면 메서드 제한이
+  없는 라우트(`ANY`)다.
+- 경로가 문자열 상수(`ApiPaths.USERS`, `BASE + "/login"`)로 적혀 있으면
+  상수 정의를 따라가 확정한다.
+- 어노테이션이 컨트롤러가 구현하는 **인터페이스**에 붙어 있는 경우가 있다
+  (API 스펙 인터페이스, OpenAPI 생성 코드). 컨트롤러 클래스에 매핑
+  어노테이션이 안 보이면 `implements` 대상을 확인한다. evidence는 매핑이
+  실제로 적힌 줄, `handler_symbol`은 구현 클래스의 메서드.
+- `handler_symbol`은 `클래스명.메서드명`.
+- 컨트롤러가 아닌 곳에서 생기는 라우트 — **프론트가 부르는데 컨트롤러에
+  없다고 바로 caller_only로 단정하지 말고 여기를 먼저 확인한다:**
+  - 보안 필터가 처리하는 경로: `SecurityFilterChain` 설정의
+    `formLogin().loginProcessingUrl(...)`, `logout().logoutUrl(...)`,
+    OAuth2 로그인의 `/oauth2/authorization/{registrationId}`와
+    `/login/oauth2/code/{registrationId}`, 그리고 특정 경로에 반응하는
+    커스텀 필터(`OncePerRequestFilter` 구현체, `AntPathRequestMatcher`).
+    컨트롤러 없이 요청을 처리한다. callee로 등록하고 `callee.note`에
+    "필터가 처리"라고 적는다.
+  - 함수형 라우트: `RouterFunction<ServerResponse>` 빈에서
+    `route().GET("/...", handler)` 형태.
+  - Actuator: `spring-boot-starter-actuator` 의존성이 있으면
+    `management.endpoints.web.base-path`(기본 `/actuator`) 아래 경로가
+    생긴다. 노출 범위는 `management.endpoints.web.exposure.include`.
+  - Spring Data REST: `spring-boot-starter-data-rest` 의존성과
+    `@RepositoryRestResource`가 있으면 리포지토리에서 라우트가 자동
+    생성된다. 정적으로 전부 나열하기 어려우니 `unknowns`에 남긴다.
+  - 정적 리소스·뷰 컨트롤러(`addViewControllers`,
+    `addResourceHandlers`)는 API 계약이 아니다.
+- `@MessageMapping`(STOMP/WebSocket)은 HTTP 라우트가 아니다. 계약으로
+  세지 않되, 프론트에 대응하는 호출부가 있으면 `unknowns`에 남긴다.
+
+### 경로 파라미터와 쿼리 표기
+
+- 경로 파라미터는 `{name}` 플레이스홀더다: `/users/{id}` → `/users/{}`.
+  정규식이 붙은 형태 `{id:[0-9]+}`도 같은 파라미터 하나다 (`name_callee`는
+  `id`).
+- `name_callee`는 플레이스홀더 안의 이름을 쓴다. 핸들러 인자의
+  `@PathVariable("id") Long userId`에서 변수 이름이 다르더라도
+  플레이스홀더 이름이 기준이다.
+- `*`, `**` 와일드카드가 들어간 경로(`/files/**`)는 단순 비교가 안 된다.
+  접두 경로가 일치하는 호출부와는 `inferred`로 맞추고 note에 남긴다.
+- 쿼리 파라미터는 핸들러 인자의 `@RequestParam`에서 찾는다. 이름은
+  `value`/`name` 속성, 없으면 인자 이름. `required = false`나
+  `defaultValue`가 있으면 선택 파라미터이니 `note`에 적는다.
+- 어노테이션 없는 객체 인자나 `@ModelAttribute` 객체(검색 조건 DTO)는
+  그 클래스의 필드가 쿼리 파라미터로 바인딩된다. `Pageable` 인자는
+  `page`, `size`, `sort`를 받는다.
+- `@RequestMapping(params = "...")`이나 `headers`/`consumes`/`produces`
+  조건으로 같은 메서드·경로에 핸들러가 여럿일 수 있다. 호출부가 어느
+  쪽에 해당하는지 확정되지 않으면 `ambiguous`다.

@@ -59,3 +59,92 @@
   정상일 수 있음 — 프론트에 test script가 없는 경우가 흔하다).
 - `package-lock.json`이 있으면 `package_manager: npm`, `yarn.lock`이면
   `yarn`, `pnpm-lock.yaml`이면 `pnpm`.
+
+## API 계약 단서
+
+### caller: 클라이언트 인스턴스와 baseURL
+
+- 인스턴스 정의부를 먼저 전부 찾는다. 검색 패턴:
+  - `axios.create(` — 가장 흔하다. 반환값을 담은 변수/export 이름이
+    인스턴스 이름이다.
+  - `ky.create(`, `ky.extend(`, `wretch(` 등 다른 클라이언트 라이브러리의
+    팩토리 호출. `package.json`의 `dependencies`에서 어떤 HTTP 라이브러리를
+    쓰는지 먼저 확인하면 검색 패턴이 정해진다.
+  - `fetch`를 감싼 자체 래퍼 함수 (`fetch(` 호출을 포함하고 경로 인자를
+    받는 함수). 래퍼 안에서 접두 경로를 붙이면 그게 baseURL이다.
+  - OpenAPI 등에서 생성된 클라이언트 (`generated/`, `__generated__/`,
+    `openapi/` 디렉터리, 파일 머리의 "auto-generated" 주석). 생성 코드의
+    기본 경로 설정(`BASE`, `basePath`, `baseUrl` 필드)이 baseURL이다.
+- 인스턴스는 보통 `src/api`, `src/services`, `src/lib`, `src/utils` 아래에
+  모여 있지만, 서비스(도메인)별 파일마다 인스턴스를 따로 만드는 패턴도
+  흔하다. 디렉터리를 가정하지 말고 스택 루트 전체에서 검색한다.
+- 인스턴스 없이 `axios.get(...)`(기본 인스턴스)이나 `fetch(...)`를 직접
+  부르는 코드는 암묵적 클라이언트로 등록한다. 기본 인스턴스에
+  `axios.defaults.baseURL = ...`을 대입하는 코드가 있으면 그 값이
+  baseURL이다.
+- baseURL이 적히는 형태:
+  - 문자열 리터럴: `baseURL: '/api/auth'` → 그대로 확정.
+  - 환경변수: `import.meta.env.VITE_*` (구버전 코드에는 `process.env.*`).
+    값은 스택 루트의 `.env`, `.env.development`, `.env.production`,
+    `.env.local`에서 찾는다. 커밋되지 않은 파일(`.gitignore` 대상)에만
+    있으면 값을 알 수 없는 것이다.
+  - 환경변수 + 경로 조합: `` `${import.meta.env.VITE_API_URL}/auth` ``,
+    `VITE_API_URL + '/auth'`. 환경변수 값을 모르면 전체가 미확정이지만,
+    뒤에 붙는 고정 경로(`/auth`)는 `base_url_note`에 적어 둔다.
+  - 기본값이 붙은 형태: `import.meta.env.VITE_API_URL || 'http://localhost:8080'`,
+    `?? '/api'`. 기본값은 확정값이 아니다.
+  - 상수/설정 모듈 참조: `baseURL: API_BASE_URL`, `config.apiUrl`. 정의를
+    따라간다.
+- 경로를 바꾸는 것:
+  - 개발 프록시: `vite.config.*`의 `server.proxy`. 키(예: `'/api'`)는
+    프록시 대상 접두 경로이고, `rewrite: (path) => path.replace(...)`가
+    있으면 백엔드에 도달하는 경로가 호출부와 달라진다 (예: `/api`를
+    떼고 전달). `rewrite`가 없으면 경로는 그대로다. `modifiers`에
+    `kind: proxy`로 기록한다. 배포 설정(`vercel.json`/`netlify.toml`의
+    `rewrites`, nginx 설정)에 같은 종류의 재작성이 있을 수 있고 개발
+    프록시와 다르면 `unknowns`에 남긴다.
+  - 인터셉터: `<인스턴스>.interceptors.request.use(`. 대부분 인증 헤더만
+    붙이지만 `config.url`이나 `config.baseURL`을 건드리면 경로가 바뀐다.
+    `interceptors.response.use(` 안에서 토큰 재발급 엔드포인트를 직접
+    호출하는 경우가 많다 — 이것도 호출부다.
+  - 공통 래퍼: 인스턴스를 받아 `get/post`를 다시 내보내는 함수나 훅.
+    호출부 검색 때 래퍼 이름으로도 찾아야 한다.
+
+### caller: 호출부
+
+- 인스턴스 이름으로 검색한다: `<인스턴스>.get(`, `.post(`, `.put(`,
+  `.patch(`, `.delete(`, `.request(`, 그리고 함수처럼 부르는
+  `<인스턴스>({ url, method })`. 메서드 이름이 HTTP 메서드다.
+  `.request(`와 함수 호출 형태는 `method` 옵션을 보고, 옵션이 없으면 GET.
+- `fetch(url, { method })`는 `method`가 없으면 GET.
+- 인스턴스가 다른 이름으로 import되는 경우(`import api from`, `import
+  { client as http }`)가 있으니 인스턴스 정의 파일을 import하는 파일을
+  먼저 모으고 그 안에서 호출을 찾는다.
+- 호출부는 보통 API 모듈 함수 안에 있고 컴포넌트는 그 함수를 부른다.
+  계약의 evidence는 **HTTP 호출이 일어나는 줄**이다 (그 함수를 쓰는
+  컴포넌트나 `useQuery`/`useMutation` 줄이 아니다).
+- 경로가 상수 객체에 모여 있는 패턴(`ENDPOINTS.LOGIN`, `API_PATHS.user(id)`)은
+  그 정의를 따라가 경로를 확정한다.
+- `EventSource(`, `WebSocket(`, `navigator.sendBeacon(`, `<form action>`,
+  `<a href>`/`window.location`으로 백엔드 경로에 직접 가는 것(파일
+  다운로드, OAuth 리다이렉트 시작점)도 호출부다. 인스턴스를 거치지
+  않으므로 baseURL이 붙지 않는다는 점에 주의한다.
+
+### callee: 라우트 정의
+
+해당 없음. 이 스택은 HTTP 라우트를 제공하지 않는다 (화면 라우팅은
+`screen_router`이고 API 계약의 callee가 아니다).
+
+### 경로 파라미터와 쿼리 표기
+
+- 경로 파라미터는 템플릿 리터럴의 `${...}`로 들어간다:
+  `` `/users/${id}` `` → `/users/{}`. 문자열 연결(`'/users/' + id`)도 같다.
+  `name_caller`에는 끼워 넣은 식을 그대로 적는다 (`id`, `user.id`).
+- 세그먼트 전체가 아니라 일부만 끼워 넣거나(`` `/files/${name}.pdf` ``),
+  끼워 넣는 값이 경로 여러 세그먼트일 수 있는 경우(`` `/${path}` ``)는
+  단순 치환이 아니다. `inferred`로 다루거나 `unknowns`에 남긴다.
+- 쿼리 스트링이 붙는 형태: 옵션 객체의 `params: { ... }`(axios),
+  `searchParams: { ... }`(ky), 경로 문자열 안의 `?key=${v}`,
+  `new URLSearchParams({ ... })`를 경로 뒤에 붙이는 코드. 키 이름을
+  `query_params`에 옮긴다. `params`에 변수 하나를 통째로 넘기면
+  (`params: filter`) 키를 알 수 없으니 `note`에 그렇게 적는다.
