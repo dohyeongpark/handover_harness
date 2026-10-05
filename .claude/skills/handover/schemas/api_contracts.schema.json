@@ -86,7 +86,10 @@
       "required": ["caller_stack_id", "callee_stack_id"],
       "properties": {
         "caller_stack_id": { "$ref": "#/$defs/stackId" },
-        "callee_stack_id": { "$ref": "#/$defs/stackId" }
+        "callee_stack_id": {
+          "description": "호출받는 쪽 스택이 이 레포에 없으면 null (이 방향의 계약은 전부 caller_only가 된다)",
+          "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/stackId" }]
+        }
       },
       "additionalProperties": false
     },
