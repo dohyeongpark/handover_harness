@@ -175,11 +175,17 @@ caller는 호출부에 적힌 그대로(baseURL 합성 전), callee는 접두 �
   부르는 호출부가 여럿이면 항목을 나누지 말고 `caller.evidence` 배열에 모두
   담는다. `path_raw_caller`는 그 첫 항목의 것을 쓴다.
 - ID는 `API-<METHOD>-<슬러그>`. 슬러그는 `path_normalized`의 세그먼트를
-  `-`로 이은 것이고 `{}`는 `_`로 쓴다.
-  예: `POST /api/users/{}/orders` → `API-POST-api-users-_-orders`.
+  `-`로 이은 것이고 `{}`(경로 파라미터 자리)는 `by`로 쓴다.
+  예: `POST /api/users/{}/orders` → `API-POST-api-users-by-orders`.
   루트 경로는 `API-GET-root`. ID에 쓸 수 없는 문자는 `-`로 바꾼다.
 - 서로 다른 클라이언트 인스턴스가 같은 엔드포인트를 부르면 클라이언트별로
-  항목을 나누고 둘째부터 ID 끝에 `--<client_id>`를 붙인다.
+  항목을 나눈다 (ID는 아래 충돌 규칙으로 구분된다).
+- **ID 충돌.** 규칙대로 만든 ID가 이미 다른 항목에 쓰였으면(클라이언트별로
+  나눈 항목, 리터럴 `by` 세그먼트가 있는 경로, 문자 치환으로 같아진 경로
+  등) 나중 항목의 ID 끝에 `-2`, `-3` 순으로 숫자 접미사를 붙인다.
+  접미사를 붙인 항목에는 어느 ID와 충돌했고 무엇이 다른지를
+  `caller.note`(caller가 없으면 `callee.note`)에 남긴다. 충돌을 피하려고
+  항목을 합치거나 지우지 마라.
 
 ## 매칭 규칙
 

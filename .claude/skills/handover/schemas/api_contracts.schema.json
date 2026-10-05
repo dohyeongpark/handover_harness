@@ -256,7 +256,7 @@
       ],
       "properties": {
         "id": {
-          "description": "API-<METHOD>-<path_normalized의 세그먼트를 '-'로 이은 것, {}는 '_'>. 예: POST /api/users/{}/orders → API-POST-api-users-_-orders",
+          "description": "API-<METHOD>-<path_normalized의 세그먼트를 '-'로 이은 것, {}는 'by'>. 예: POST /api/users/{}/orders → API-POST-api-users-by-orders. 같은 ID가 이미 있으면 -2, -3 순으로 숫자 접미사를 붙이고, 어느 ID와 충돌했는지 caller.note(caller가 없으면 callee.note)에 남긴다.",
           "$ref": "common.schema.json#/$defs/itemId",
           "pattern": "^API-"
         },
