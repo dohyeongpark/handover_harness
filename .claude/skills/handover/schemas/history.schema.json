@@ -154,7 +154,13 @@
         "sha": { "$ref": "common.schema.json#/$defs/commit" },
         "date": { "type": "string", "format": "date-time" },
         "kind": {
-          "enum": ["revert", "large_refactor", "mass_deletion", "merge_of_long_branch"]
+          "description": "어느 값에도 맞지 않으면(예: 최초 커밋) 억지로 끼워 맞추지 말고 other로 두고 kind_note에 이유를 적는다.",
+          "enum": ["revert", "large_refactor", "mass_deletion", "merge_of_long_branch", "other"]
+        },
+        "kind_note": {
+          "description": "kind가 other일 때 필수. 왜 기존 분류에 맞지 않는지.",
+          "type": "string",
+          "minLength": 1
         },
         "subject": {
           "description": "커밋 제목. 이메일/개인 연락처가 포함되어 있으면 제외하고 옮겨적는다.",

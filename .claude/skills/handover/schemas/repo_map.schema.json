@@ -111,7 +111,8 @@
       "required": ["kind", "stack_id", "description", "evidence"],
       "properties": {
         "kind": {
-          "enum": ["http_route_root", "screen_router", "cli", "scheduler", "event_consumer", "main"]
+          "description": "맞는 값이 없으면 other로 두고 description에 이유를 적는다.",
+          "enum": ["http_route_root", "screen_router", "cli", "scheduler", "event_consumer", "main", "other"]
         },
         "stack_id": { "type": "string", "minLength": 1 },
         "description": { "type": "string", "minLength": 1, "maxLength": 300 },
@@ -148,9 +149,14 @@
 
     "externalDep": {
       "type": "object",
-      "required": ["name", "kind", "provisional_requirement", "config_evidence"],
+      "required": ["name", "profile", "kind", "provisional_requirement", "config_evidence"],
       "properties": {
         "name": { "type": "string", "minLength": 1 },
+        "profile": {
+          "description": "이 항목이 적용되는 프로필/환경 (예: dev, prod, test). 프로필 개념이 없으면 default. 프로필마다 의존성이 다르면(dev=H2, prod=MySQL) 프로필별로 항목을 따로 만든다. 같은 (name, profile) 쌍은 중복할 수 없다. env_report.json의 profile과 같은 이름을 쓴다.",
+          "type": "string",
+          "minLength": 1
+        },
         "kind": {
           "enum": ["http_api", "database", "cache", "queue", "storage", "auth", "other"]
         },

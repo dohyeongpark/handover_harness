@@ -85,7 +85,7 @@
         "required": ["question", "reason"],
         "properties": {
           "question": { "type": "string", "minLength": 1 },
-          "reason": { "enum": ["low_confidence", "not_runnable", "unclear_intent", "missing_info", "doc_code_mismatch"] },
+          "reason": { "enum": ["low_confidence", "not_runnable", "unclear_intent", "missing_info", "doc_code_mismatch", "other"] },
           "related_claims": {
             "type": "array",
             "items": { "$ref": "common.schema.json#/$defs/claimId" }
