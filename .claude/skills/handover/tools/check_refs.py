@@ -13,6 +13,8 @@
 - env_report.dependencies_resolved[].name이 repo_map.external_deps에 있는지 (경고:
   env-builder가 새로 발견했을 수 있다)
 - 인덱스(features.json 등)의 detail_path 파일 존재, 상세 파일 ID가 인덱스에 있는지
+- features.json의 contract_ids가 api_contracts에 있는지, 어떤 기능에도 안 들어간 계약이
+  있는지 (경고: features.json의 unknowns에 그 계약 ID가 있으면 사유가 남은 것으로 보고 통과)
 - 상세 파일의 related(claim.related)가 가리키는 항목 ID가 인덱스/api_contracts에 있는지
 - history.json의 hotspots/ownership/notable_commits 경로가 레포에 실제로 있는지 (경고:
   삭제·이름 변경된 경로일 수 있다)
@@ -121,6 +123,21 @@ def check_items(handover: Path, contracts: dict | None, r: Report) -> None:
 
     contract_ids = {c.get("id") for c in (contracts or {}).get("contracts", [])}
     known_ids = index_ids | contract_ids
+
+    features = indexes.get("features.json")
+    if features is not None:
+        if contracts is None:
+            r.skip("features.json의 contract_ids 참조 (api_contracts.json 없음)")
+        else:
+            assigned: set[str] = set()
+            for i, item in enumerate(features.get("items", [])):
+                for cid in item.get("contract_ids", []):
+                    assigned.add(cid)
+                    if cid not in contract_ids:
+                        r.error(f"features.json: items[{i}]({item.get('id')})의 contract_ids '{cid}'가 api_contracts에 없음")
+            explained = {u.get("topic") for u in features.get("unknowns", [])}
+            for cid in sorted(contract_ids - assigned - explained):
+                r.warn(f"api_contracts.json: 계약 {cid}가 어떤 기능에도 속하지 않고 features.json unknowns에도 사유가 없음")
 
     for p, doc in details.items():
         rel = p.relative_to(handover).as_posix()
