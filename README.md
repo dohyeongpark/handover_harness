@@ -18,11 +18,15 @@
 - `skills/handover/examples/` — 에이전트 프롬프트에 예시로 넣을 정상 산출물
 - `agents/repo-mapper.md` — Phase 1: 스택 판별, 엔트리포인트, 모듈 의존, 외부 의존성 후보 지도 작성
 - `agents/api-contract-mapper.md` — Phase 1: 프론트 호출부와 백엔드 라우트를 짝지은 계약 목록 작성
+- `skills/handover/tools/check_refs.py` — 산출물 사이의 참조 무결성 검사 (stack_id, 항목 ID, detail_path, commit 일치)
 - `hooks/guard_write.py` — PreToolUse: .handover/ 밖 쓰기 차단
 - `hooks/validate_artifact.py` — PostToolUse: 스키마 + 의미 규칙 검증, 실패 시 exit 2
 
 ## 수동 검증
 python3 ~/.claude/hooks/validate_artifact.py --file <프로젝트>/.handover/features.json
+
+## 산출물 간 참조 검사
+python3 ~/.claude/skills/handover/tools/check_refs.py <프로젝트> [--strict]
 
 ## 산출물 읽기
 python3 ~/.claude/skills/handover/tools/render.py <프로젝트>/.handover/api_contracts.json [--out <md 경로>]

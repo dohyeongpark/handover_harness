@@ -68,11 +68,24 @@ Claude Agent SDK를 호출하는 하이브리드 구조를 염두에 둔다.
 
 ```
 [완료] repo-mapper → env-builder / history-analyst → api-contract-mapper
+[완료] A. 기반 정리 (아래 "A단계 결과" 참고)
 [다음] feature-inventory / tech-inventory
        → feature-tracer / tech-analyst (항목별 병렬)
        → risk-analyst → verifier → doc-writer
 [최종] 오케스트레이션 스킬 (메인 세션이 순서와 분배를 관리)
 ```
+
+### A단계 결과 (2026-10-06)
+
+- **ID 형식 검사** — 훅이 api_contracts의 `id`가 `method` + `path_normalized`에서 유도한 값인지 확인한다.
+  `-2`, `-3` 접미사는 앞선 ID가 있고 note가 있을 때만 허용한다.
+- **참조 무결성** — `tools/check_refs.py`. 파일 간 stack_id, 항목 ID, detail_path, commit 일치를 본다.
+- **enum 탈출구** — history `notable_commits.kind`, repo_map `entrypoints.kind`, detail `open_questions.reason`에
+  `other`를 추가했다. history는 `other`면 `kind_note`가 필수다.
+- **프로필 구분** — repo_map `external_deps[].profile`을 필수로 추가했다. 같은 (name, profile) 쌍은 중복 불가.
+  기존 repo_map.json은 이 필드가 없어 재생성이 필요하다.
+- 에이전트 프롬프트(repo-mapper, history-analyst)에 위 규칙을 반영했다.
+- **미검증:** 위 변경은 합성 데이터로만 테스트했다. 실제 에이전트 실행(별도 세션)은 아직 안 했다.
 
 **기능은 두 축으로 나뉜다. 분석 방향이 다르다.**
 
