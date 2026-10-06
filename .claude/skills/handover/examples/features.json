@@ -10,6 +10,8 @@
       "name": "주문 생성",
       "summary": "장바구니 상품으로 주문을 생성하고 재고를 차감한다.",
       "layers": ["frontend", "backend", "db"],
+      "trigger": "user_action",
+      "contract_ids": ["API-POST-api-orders"],
       "entrypoints": [
         { "file": "frontend/src/pages/OrderPage.tsx", "lines": "30-52", "symbol": "handleSubmit" },
         { "file": "backend/order/OrderController.java", "lines": "18-35", "symbol": "createOrder" }
@@ -23,6 +25,8 @@
       "name": "주문 취소",
       "summary": "결제 전 주문을 취소한다.",
       "layers": ["frontend", "backend"],
+      "trigger": "user_action",
+      "contract_ids": ["API-POST-api-orders-by-cancel"],
       "entrypoints": [
         { "file": "backend/order/OrderController.java", "lines": "40-55", "symbol": "cancelOrder" }
       ],

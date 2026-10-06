@@ -13,6 +13,11 @@
     "items": {
       "type": "array",
       "items": { "$ref": "#/$defs/indexItem" }
+    },
+    "unknowns": {
+      "description": "목록을 만들면서 판단하지 못한 것. 예: 어느 기능에 넣을지 정하지 못한 API 계약, 호출 흐름을 읽지 못한 화면.",
+      "type": "array",
+      "items": { "$ref": "common.schema.json#/$defs/unknown" }
     }
   },
   "additionalProperties": false,
@@ -39,6 +44,21 @@
         "entrypoints": {
           "description": "기능이면 화면·라우트·엔드포인트, 기술 요소면 설정 파일·공통 모듈 위치",
           "$ref": "common.schema.json#/$defs/evidenceList"
+        },
+        "trigger": {
+          "description": "service_feature가 무엇으로 시작되는가. user_action: 화면에서 사용자가 행동 / scheduled: 스케줄러·배치 / event: 메시지·이벤트 소비 / external_call: 부르는 화면을 찾지 못한 채 API로만 노출됨 / unknown: 판단 못 함.",
+          "enum": ["user_action", "scheduled", "event", "external_call", "unknown"]
+        },
+        "contract_ids": {
+          "description": "service_feature가 사용하는 api_contracts.json의 계약 ID. 한 계약을 여러 기능이 공유할 수 있다. 호출이 없는 기능(스케줄러 등)이면 생략.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "common.schema.json#/$defs/itemId", "pattern": "^API-" }
+        },
+        "grouping_note": {
+          "description": "여러 계약·화면을 한 기능으로 묶었거나 쪼갠 이유를 판단하기 애매했을 때만. verifier와 사람이 묶음 판단을 다시 볼 수 있게 한다.",
+          "type": "string",
+          "minLength": 1
         },
         "detail_path": {
           "description": ".handover/ 기준 상대 경로. 파일 이름은 <id>.json 이어야 한다.",
