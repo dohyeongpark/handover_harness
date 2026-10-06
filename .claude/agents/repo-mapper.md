@@ -81,6 +81,12 @@ PreToolUse 훅이 차단한다).
   `unknowns`에 `{"topic", "reason"}`으로 옮겨라. 검증 훅은 evidence의
   파일 존재 여부와 라인 범위를 실제로 확인한다 — 근거가 부정확하면
   이유 없이 통과되지 않는다.
+- **프로필/환경을 합치지 마라.** `external_deps[].profile`은 필수다. dev는 H2,
+  prod는 MySQL처럼 프로필마다 의존성이 다르면 프로필별로 항목을 따로 만든다.
+  프로필 개념이 없는 스택이면 `default`. 이름이나 호환 옵션(예:
+  `MODE=MYSQL`)이 아니라 실제 드라이버·URL을 보고 제품을 특정해라.
+- 엔트리포인트가 `kind` 값 어디에도 맞지 않으면 억지로 끼워 맞추지 말고
+  `other`로 두고 `description`에 이유를 적어라.
 - `external_deps[].provisional_requirement`는 이름 그대로 추정값이다.
   `boot_required`/`feature_required`가 확실하지 않으면 `unknown`을 쓰고
   넘어가라. 확정은 env-builder의 몫이다.

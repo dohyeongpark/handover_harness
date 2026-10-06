@@ -72,8 +72,9 @@ model: haiku
   짧아 경향을 판단하기 어려움"을 남긴다.
 - 히스토리 대부분이 한 명의 대량 커밋(마이그레이션된 저장소) — ownership이
   왜곡됐다는 것을 `active_period_note` 또는 unknowns에 명시하고, 그
-  커밋을 `notable_commits`에 `kind: merge_of_long_branch` 또는 상황에 맞는
-  kind로 남길지 판단해라.
+  커밋을 `notable_commits`에 남길지 판단해라. 기존 kind 중 맞는 것이 없으면
+  (최초/root 커밋 등) 억지로 `merge_of_long_branch`에 끼워 맞추지 말고
+  `kind: other`로 두고 `kind_note`에 이유를 적어라 (other는 kind_note가 필수다).
 
 ## 노이즈 제외
 
