@@ -69,7 +69,8 @@ Claude Agent SDK를 호출하는 하이브리드 구조를 염두에 둔다.
 ```
 [완료] repo-mapper → env-builder / history-analyst → api-contract-mapper
 [완료] A. 기반 정리 (아래 "A단계 결과" 참고)
-[다음] feature-inventory / tech-inventory
+[진행] B. feature-inventory 작성 완료(미실행) → tech-inventory 남음
+[다음] tech-inventory
        → feature-tracer / tech-analyst (항목별 병렬)
        → risk-analyst → verifier → doc-writer
 [최종] 오케스트레이션 스킬 (메인 세션이 순서와 분배를 관리)
@@ -86,6 +87,20 @@ Claude Agent SDK를 호출하는 하이브리드 구조를 염두에 둔다.
   기존 repo_map.json은 이 필드가 없어 재생성이 필요하다.
 - 에이전트 프롬프트(repo-mapper, history-analyst)에 위 규칙을 반영했다.
 - **미검증:** 위 변경은 합성 데이터로만 테스트했다. 실제 에이전트 실행(별도 세션)은 아직 안 했다.
+
+### B단계 진행 (2026-10-06)
+
+- **기능 단위 결정:** 서비스 기능은 **사용자 행동 단위**(회원가입, 주문 생성)로 자른다.
+  API 엔드포인트 하나가 기능 하나가 아니고, 화면 하나도 아니다. 묶음이 애매하면 `grouping_note`.
+- **inventory는 에이전트 둘로 분리**(feature-inventory, tech-inventory). feature부터 만들었다.
+- feature-inventory는 목차만 만든다. 상세(`traces/*`)는 만들지 않고 모든 항목 `status: pending`.
+  입력은 repo_map.json + api_contracts.json 둘 다 필수(없으면 중단).
+- index 스키마에 `trigger`, `contract_ids`, `grouping_note`, `unknowns` 추가.
+  훅은 kind↔파일명↔type↔ID 접두사↔detail_path 디렉터리 일관성을 검사한다.
+- 플레이북에 7절 `## 서비스 기능 단서` 추가 (typescript-react-vite, java-spring-boot).
+- check_refs는 `contract_ids`가 실제 계약에 있는지, 어떤 기능에도 안 들어간 계약이 있는지 본다.
+- **미검증:** 에이전트를 아직 한 번도 실행하지 않았다(별도 세션에서 moki-campaign으로 실행 필요).
+  훅·check_refs는 합성 데이터로만 테스트했다.
 
 **기능은 두 축으로 나뉜다. 분석 방향이 다르다.**
 
