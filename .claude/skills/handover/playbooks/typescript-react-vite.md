@@ -148,3 +148,31 @@
   `new URLSearchParams({ ... })`를 경로 뒤에 붙이는 코드. 키 이름을
   `query_params`에 옮긴다. `params`에 변수 하나를 통째로 넘기면
   (`params: filter`) 키를 알 수 없으니 `note`에 그렇게 적는다.
+
+## 서비스 기능 단서
+
+### 사용자 행동 단서
+
+- 화면 목록: `screen_router` 엔트리포인트의 `<Route path=... element=...>`나
+  `createBrowserRouter` 항목. `element`/`Component`가 가리키는 컴포넌트가
+  그 화면이다. `lazy(() => import(...))`면 import 대상 파일을 따라간다.
+  라우트가 중첩되면 상위 레이아웃은 화면이 아니라 껍데기다.
+- 화면 안의 사용자 행동은 이벤트 핸들러에서 시작된다: `onSubmit`, `onClick`,
+  `onChange`(자동 저장·검색 등), 폼 라이브러리의 `handleSubmit(`. 핸들러가
+  호출하는 함수를 따라가 api_contracts의 caller evidence 위치(`파일:라인`)와
+  겹치는지 본다 — 겹치면 그 행동이 그 계약을 쓰는 것이다.
+- 화면이 열릴 때 자동으로 부르는 호출(`useEffect`, `useQuery`, 라우터
+  `loader`)은 "조회"이고, 사용자가 누르는 행동과 구분한다. 같은 화면의
+  조회 호출 여럿은 보통 그 화면의 "조회" 기능 하나로 묶는다.
+- 서버 상태 라이브러리(`@tanstack/react-query`의 `useMutation`, `useQuery`,
+  `swr`)를 쓰면 훅 정의 파일이 호출 함수와 화면 사이를 잇는다. 화면 →
+  훅 → API 함수 순으로 따라간다.
+- 인증이 필요한 화면을 감싸는 컴포넌트(`PrivateRoute`, `RequireAuth`)는
+  기능이 아니라 접근 제어다. 별도 기능으로 만들지 않는다 (기술 요소 쪽에서
+  다룬다).
+
+### 사용자 행동이 아닌 시작점
+
+해당 없음. 브라우저 앱은 스케줄러·이벤트 소비자를 갖지 않는다. 웹 소켓·SSE
+수신(`new WebSocket(`, `EventSource(`)이 있으면 서버가 시작하는 흐름이므로
+`trigger: event`로 보고 `unknowns`에 남긴다.

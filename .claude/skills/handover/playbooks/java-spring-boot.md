@@ -152,3 +152,33 @@
 - `@RequestMapping(params = "...")`이나 `headers`/`consumes`/`produces`
   조건으로 같은 메서드·경로에 핸들러가 여럿일 수 있다. 호출부가 어느
   쪽에 해당하는지 확정되지 않으면 `ambiguous`다.
+
+## 서비스 기능 단서
+
+### 사용자 행동 단서
+
+- 백엔드는 사용자 행동을 직접 보지 못하고 컨트롤러 메서드(핸들러)로만
+  본다. 기능 경계는 프론트 화면 쪽 단서(프론트 플레이북)를 우선하고,
+  백엔드 쪽은 "같은 기능에 속하는 핸들러를 묶는 근거"로 쓴다:
+  - 한 컨트롤러 메서드가 호출하는 서비스 메서드(`@Service`)가 같으면 같은
+    기능일 가능성이 높다.
+  - 같은 서비스 메서드를 여러 핸들러가 공유하면(예: 관리자용/사용자용)
+    별도 기능으로 쪼갤지 `grouping_note`에 판단 근거를 남긴다.
+- 컨트롤러 메서드 하나가 곧 기능 하나는 아니다. 검증 요청(`/check-*`),
+  목록 조회와 상세 조회처럼 같은 행동의 부분인 핸들러를 묶는다.
+- 인증·인가 필터와 `@PreAuthorize`/`@Secured`는 기능이 아니라 접근 제어다.
+  별도 기능으로 만들지 않는다.
+
+### 사용자 행동이 아닌 시작점
+
+화면이 부르지 않는 기능의 시작점은 아래와 같고, 각각 `trigger` 값이 정해진다.
+
+- `@Scheduled` 메서드 → `trigger: scheduled`. 크론/고정 주기 표현식을 summary에
+  적는다.
+- `@KafkaListener`, `@RabbitListener`, `@EventListener`, `@TransactionalEventListener`
+  메서드 → `trigger: event`.
+- 컨트롤러 핸들러인데 api_contracts에서 caller가 없는 것(`callee_only`) →
+  `trigger: external_call`. 외부 시스템이 부르는 웹훅·콜백일 수 있다
+  (경로에 `webhook`, `callback`, `notify` 등이 들어 있으면 단서).
+- `CommandLineRunner`/`ApplicationRunner` 빈 → 기동 시 한 번 도는 초기화.
+  기능으로 볼지 애매하면 기능으로 만들지 말고 `unknowns`에 남긴다.
