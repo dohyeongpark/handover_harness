@@ -31,6 +31,8 @@ ENV_REPORT_FILE = "env_report.json"
 API_CONTRACTS_FILE = "api_contracts.json"
 MATCH_STATUSES = ("matched", "caller_only", "callee_only", "ambiguous")
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+ID_SUFFIX_RE = re.compile(r"^(.*?)(?:-(\d+))?$")
+ID_UNSAFE_RE = re.compile(r"[^A-Za-z0-9._-]+")
 
 
 # ---------------------------------------------------------------- schema loading
@@ -167,6 +169,11 @@ def semantic_detail(doc: dict, file_path: Path, errors: list[str]) -> None:
 
 
 def semantic_repo_map(doc: dict, errors: list[str]) -> None:
+    dep_keys = [(d.get("name"), d.get("profile")) for d in doc.get("external_deps", [])]
+    dup_deps = {x for x in dep_keys if dep_keys.count(x) > 1}
+    if dup_deps:
+        errors.append(f"중복 external_deps (name, profile): {sorted(dup_deps)}")
+
     stack_ids = [s.get("id") for s in doc.get("stacks", [])]
     dup_stacks = {x for x in stack_ids if stack_ids.count(x) > 1}
     if dup_stacks:
@@ -205,6 +212,10 @@ def semantic_history(doc: dict, errors: list[str]) -> None:
         sha = c.get("sha", "")
         if not SHA_RE.match(sha):
             errors.append(f"notable_commits[{i}]: sha는 40자 hex여야 함 ({sha})")
+        if c.get("kind") == "other" and not (c.get("kind_note") or "").strip():
+            errors.append(
+                f"notable_commits[{i}]: kind가 other면 kind_note에 기존 분류에 맞지 않는 이유를 적어야 함"
+            )
 
     for key in ("hotspots", "ownership"):
         paths = [item.get("path") for item in doc.get(key, [])]
@@ -259,6 +270,32 @@ def semantic_env_report(doc: dict, errors: list[str]) -> None:
         errors.append(f"meta.budget: attempts_used({used})가 max_attempts({limit})를 넘음")
 
 
+def expected_contract_id_base(method: str, path_normalized: str) -> str:
+    """API-<METHOD>-<경로 세그먼트를 '-'로 이은 것, {}는 by>. 루트 경로면 API-<METHOD>."""
+    segs = [("by" if s == "{}" else ID_UNSAFE_RE.sub("-", s).strip("-")) for s in path_normalized.split("/") if s]
+    segs = [s for s in segs if s]
+    return "-".join(["API", method, *segs])
+
+
+def check_contract_id(c: dict, where: str, ids: set, errors: list[str]) -> None:
+    cid = c.get("id") or ""
+    base = expected_contract_id_base(c.get("method", ""), c.get("path_normalized", ""))
+    if cid == base:
+        return
+    m = ID_SUFFIX_RE.match(cid)
+    stem, num = (m.group(1), m.group(2)) if m else (cid, None)
+    if stem != base or num is None:
+        errors.append(f"{where}: id는 method와 path_normalized에서 유도한 '{base}'(충돌 시 -2, -3 접미사)여야 함 ({cid})")
+        return
+    # 접미사 ID는 충돌 상대가 실제로 있어야 하고, 이유를 note에 남겨야 한다
+    prior = base if int(num) == 2 else f"{base}-{int(num) - 1}"
+    if int(num) < 2 or prior not in ids:
+        errors.append(f"{where}: 접미사 -{num}는 앞선 ID '{prior}'가 있을 때만, 2부터 순서대로 붙일 수 있음 ({cid})")
+    note_owner = c.get("caller") or c.get("callee") or {}
+    if not (note_owner.get("note") or "").strip():
+        errors.append(f"{where}: 접미사 ID는 충돌한 ID와 차이를 caller.note(없으면 callee.note)에 남겨야 함")
+
+
 def semantic_api_contracts(doc: dict, errors: list[str]) -> None:
     client_ids = [c.get("id") for c in doc.get("clients", [])]
     dup_clients = {x for x in client_ids if client_ids.count(x) > 1}
@@ -272,8 +309,11 @@ def semantic_api_contracts(doc: dict, errors: list[str]) -> None:
     if dup_ids:
         errors.append(f"중복 contract id: {sorted(dup_ids)}")
 
+    seen_ids: set = set()
     for i, c in enumerate(contracts):
         where = f"contracts[{i}]({c.get('id')})"
+        check_contract_id(c, where, seen_ids, errors)
+        seen_ids.add(c.get("id"))
         caller, callee = c.get("caller"), c.get("callee")
         status = c.get("match_status")
         candidates = c.get("candidates") or []
