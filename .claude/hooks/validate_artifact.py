@@ -23,6 +23,13 @@ MAX_ERRORS = 20
 LINE_RE = re.compile(r"^(\d+)(?:-(\d+))?$")
 
 INDEX_FILES = {"features.json", "tech_elements.json", "external_deps.json"}
+# 인덱스 파일마다 kind, 허용되는 항목 type, 상세 파일 디렉터리가 정해져 있다
+INDEX_SPEC = {
+    "features.json": ("feature_index", ("service_feature", "flow"), "traces"),
+    "tech_elements.json": ("tech_index", ("tech_element",), "tech"),
+    "external_deps.json": ("external_index", ("external_dependency",), "ext"),
+}
+TYPE_PREFIX = {"service_feature": "FEAT-", "flow": "FLOW-", "tech_element": "TECH-", "external_dependency": "EXT-"}
 DETAIL_DIRS = {"traces", "tech", "ext"}
 DIR_PREFIX = {"traces": ("FEAT-", "FLOW-"), "tech": ("TECH-",), "ext": ("EXT-",)}
 REPO_MAP_FILE = "repo_map.json"
@@ -119,13 +126,25 @@ def walk_evidence(node, path: str):
             yield from walk_evidence(v, f"{path}[{i}]")
 
 
-def semantic_index(doc: dict, handover: Path, errors: list[str]) -> None:
+def semantic_index(doc: dict, file_path: Path, handover: Path, errors: list[str]) -> None:
+    kind, allowed_types, detail_dir = INDEX_SPEC[file_path.name]
+    if doc.get("kind") != kind:
+        errors.append(f"{file_path.name}의 kind는 '{kind}'여야 함 ({doc.get('kind')})")
     seen = set()
     for i, item in enumerate(doc.get("items", [])):
         iid = item.get("id")
         if iid in seen:
             errors.append(f"items[{i}]: 중복 ID {iid}")
         seen.add(iid)
+        itype = item.get("type")
+        if itype not in allowed_types:
+            errors.append(f"items[{i}]: {file_path.name}에는 {'/'.join(allowed_types)} 항목만 둘 수 있음 ({itype})")
+        elif not (iid or "").startswith(TYPE_PREFIX[itype]):
+            errors.append(f"items[{i}]: type이 {itype}이면 ID는 {TYPE_PREFIX[itype]}로 시작해야 함 ({iid})")
+        if not item.get("detail_path", "").startswith(detail_dir + "/"):
+            errors.append(f"items[{i}]: {file_path.name}의 detail_path는 {detail_dir}/ 아래여야 함 ({item.get('detail_path')})")
+        if (item.get("trigger") or item.get("contract_ids")) and itype != "service_feature":
+            errors.append(f"items[{i}]: trigger와 contract_ids는 service_feature에만 쓴다 ({iid})")
         dp = item.get("detail_path", "")
         if dp and Path(dp).stem != iid:
             errors.append(f"items[{i}]: detail_path 파일 이름이 ID와 다름 ({dp} vs {iid})")
@@ -396,7 +415,7 @@ def validate_file(file_path: Path, validators) -> list[str]:
     for where, ev in walk_evidence(doc, "$"):
         check_evidence(ev, repo_root, where, errors, cache)
     if kind == "index":
-        semantic_index(doc, handover, errors)
+        semantic_index(doc, file_path, handover, errors)
     elif kind == "detail":
         semantic_detail(doc, file_path, errors)
     elif kind == "repo_map":
